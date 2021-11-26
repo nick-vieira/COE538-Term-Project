@@ -21,10 +21,12 @@ LCD_DAT     EQU PORTB ; LCD data port
 LCD_CNTR    EQU PTJ
 LCD_E       EQU $80   ;LCD E-signal pin
 LCD_RS      EQU $40   ;LCD RS-signal pin
+
 FWD_INT     EQU 69 ; 3 second delay (at 23Hz)
 REV_INT     EQU 69 ; 3 second delay (at 23Hz)
 FWD_TRN_INT EQU 46 ; 2 second delay (at 23Hz)
 REV_TRN_INT EQU 46 ; 2 second delay (at 23Hz)
+
 START       EQU 0
 FWD         EQU 1
 REV         EQU 2
@@ -34,7 +36,7 @@ REV_TRN     EQU 5
 
 ; variable section
 
-            ORG $3850 ; Where our TOF counter register lives
+            ORG $3000 ; Where our TOF counter register lives
             
 TOF_COUNTER dc.b 0 ; The timer, incremented at 23Hz
 CRNT_STATE  dc.b 3 ; Current state register
@@ -50,11 +52,52 @@ UNITS       ds.b 1 ; 1 digit
 NO_BLANK    ds.b 1 ; Used in ’leading zero’ blanking by BCD2ASC
 BCD_SPARE   RMB 10   ; Extra space for decimal point and string terminator
 
-;************************************************************
-;* Motor Control                                           *
-;************************************************************
+;ATD variables
+
+ATDDIEN:     RMB 8
+ATDDR0L      RMB 8
+ATDSTAT0:    RMB 1
+ATDDR4       RMB 4
+ATDCTL2      RMB 4
+ATDCTL3      RMB 4
+ATDCTL4      RMB 4
+ATDCTL5      RMB 4
+
+;code section
+            ORG $3000 ; Where our TOF counter register lives
 Entry:
 _Startup:
+
+            LDS $4000 ;Stack pointer initialization
+            JSR initPORTS  ;
+            JSR initAD   ;AD converter
+            JSR initLCD ;LCD initlization
+            JSR clrLCD  ;Clear LCD and home cursor
+            JSR initTCNT  ;Timer overflow counter initialization
+            CLI   ;Enable interrupts
+            
+            LDX #msg1 ;Display msg1
+            JSR putsLCD
+            
+            LDAA #$8A   ;Move LCD cursor to end of msg1
+            JSR cmd2LCD
+            LDX #msg2   ;Display msg2
+            JSR putsLCD
+            
+            LDAA #$C0   ;Move LCD cursor to end of msg2
+            JSR cmd2LCD
+            LDX #msg3   ;Display msg3
+            JSR putsLCD
+            
+            LDAA #$C7   ;Move LCD cursor to end of msg3
+            JSR cmd2LCD
+            LDX #msg4   ;Display msg4
+            JSR putsLCD
+                       
+
+;************************************************************
+;* Motor Control                                            *
+;************************************************************
             BSET DDRA,%00000011
             BSET DDRT,%00110000
             JSR  STARFWD
@@ -107,14 +150,12 @@ PORTREV     LDAA PORTA
             STAA PTH
             RTS
 
-;code section
-
-            CLI   ;Enable global interrupts
-
 ;data section
 
-msg1        dc.b "Battery volt ",0
-msg2        dc.b "State ",0
+msg1        dc.b "State ",0
+msg2        dc.b "Readings ",0
+msg3:       dc.b "Battery Voltage ",0
+msg4        dc.b "Bumper status ",0
 tab         dc.b "START ",0
             dc.b "FWD ",0
             dc.b "REV ",0
@@ -139,22 +180,31 @@ NOT_FORWARD   CMPA #REV ;Else if it's the REVERSE state
               JSR REV_ST ; then call the REVERSE routine
               JMP DISP_EXIT ; and exit
             
-NOT_REV       CMPA #ALL_STP ;Else if it's the ALL_STOP state
-              BNE NOT_ALL_STP
-              JSR ALL_STP_ST ; then call the ALL_STOP routine
+NOT_REV       CMPA #LT_TRN ;Else if it's the LT_TRN state
+              BNE NOT_LT_TRN
+              JSR LT_TRN_ST ; then call the LT_TRN routine
               JMP DISP_EXIT ; and exit
             
-NOT_ALL_STP  CMPA #FWD_TRN ;Else if it's the FWD_TRN state
-              BNE NOT_FWD_TRN
-              JSR FWD_TRN_ST ; then call the FWD_TRN routine
-              JMP DISP_EXIT ; and exit            
-                                                         
-NOT_FWD_TRN   CMPA #REV_TRN ; Else if it’s the REV_TRN state  
-              BNE NOT_REV_TRN ;                               
-              JSR REV_TRN_ST ; then call REV_TRN_ST routine   
-              BRA DISP_EXIT ; and exit                        
+NOT_LT_TRN  CMPA #RT_TRN
+            BNE NOT_RT_TRN
+            JSR RT_TRN_ST ; then call the REV_TRN routine
+            JMP DISP_EXIT ; and exit
+            
+NOT_RT_TRN  CMPA #REV
+            BNE NOT_REV
+            JSR REV_ST ; then call the REVERSE routine
+            JMP DISP_EXIT ; and exit
+            
+NOT_REVERSE  CMPA #BK_TRK  
+             BNE NOT_BK_TRK 
+             JMP BK_TRK_ST
+                
+NOT_BK_TRK   CMPA #SBY                     
+             BNE NOT_SBY  
+             JSR SBY_ST   
+             JMP DISP_EXITl               
 
-NOT_REV_TRN SWI ; Else the CRNT_ST is not defined, so stop |
+NOT_SBY     NOP       
 DISP_EXIT   RTS ; Exit from the state dispatcher ----------
 
 ;*******************************************************************
@@ -174,18 +224,24 @@ FWD_ST      BRSET PORTAD0, $04, NO_FWD_BUMP ; if FWD_BUMP then
             JMP FWD_EXIT  ; return
             
 NO_FWD_BUMP BRSET PORTAD0,$08,NO_REV_BUMP ; If REAR_BUMP, then we should stop
-            JSR INIT_ALL_STP ; so initialize the ALL_STOP state
-            MOVB #ALL_STP_ST, CRNT_STATE ; and change state to ALL_STOP
+            JSR INIT_REV_BUMP ; so initialize the ALL_STOP state
+            MOVB #REV_ST, CRNT_STATE ; and change state to ALL_STOP
             JMP FWD_EXIT ; and return
             
 NO_REV_BUMP  LDAA TOF_COUNTER ; If Tc>Tfwd then
              CMPA T_FWD ; the robot should make a turn
-             BNE NO_FWD_TRN ; so
-             JSR INIT_FWD_TRN ; initialize the FORWARD_TURN state
-             MOVB #FWD_TRN,CRNT_STATE ; and go to that state
-             JMP FWD_EXIT 
-                        
-NO_FWD_TRN  NOP ; Else
+             BNE NO_LT_TRN ; so
+             JSR INIT_LT_TRN ; initialize the FORWARD_TURN state
+             MOVB #LT_TRN,CRNT_STATE ; and go to that state
+             JMP FWD_EXIT
+             
+LT_TURN       LDAA  NEXT_D   ; Push direction for the previous
+              PSHA      ; Intersection to the stack pointer
+              LDAA  SEC_PTH_INT ; Then store direction taken to NEXT_D
+              STAA  NEXT_D 
+              JSR   INIT_LT_TRN  ; The robot should make a LEFT turn
+              MOVB  #LT_TRN,CRNT_STATE ; Initialize the LT_TRN state             
+
 FWD_EXIT    RTS ; return to the MAIN routine
 
 ;*******************************************************************
@@ -198,37 +254,6 @@ REV_ST      LDAA TOF_COUNTER ; If Tc>Trev then
             BRA REV_EXIT ; and return
 NO_REV_TRN  NOP ; Else
 REV_EXIT    RTS ; return to the MAIN routine
-
-;*******************************************************************
-
-ALL_STP_ST   BRSET PORTAD0,$04,NO_START ; If FWD_BUMP
-             BCLR PTT,%00110000 ; initialize the START state (both motors off)
-             MOVB #START,CRNT_STATE ; set the state to START
-             BRA ALL_STP_EXIT ; and return
-NO_START     NOP ; Else
-ALL_STP_EXIT RTS ; return to the MAIN routine
-
-;*******************************************************************
-
-FWD_TRN_ST    LDAA TOF_COUNTER ; If Tc>Tfwdturn then
-              CMPA T_FWD_TRN ; the robot should go FWD
-              BNE NO_FWD_FT ; so
-              JSR INIT_FWD ; initialize the FWD state
-              MOVB #FWD,CRNT_STATE ; set state to FWD
-              BRA FWD_TRN_EXIT ; and return
-NO_FWD_FT     NOP ; Else
-FWD_TRN_EXIT  RTS ; return to the MAIN routine
-
-;*******************************************************************
-
-REV_TRN_ST    LDAA TOF_COUNTER ; If Tc>Trevturn then
-              CMPA T_REV_TRN ; the robot should go FWD
-              BNE NO_FWD_RT ; so
-              JSR INIT_FWD ; initialize the FWD state
-              MOVB #FWD,CRNT_STATE ; set state to FWD
-              BRA REV_TRN_EXIT ; and return
-NO_FWD_RT     NOP ; Else
-REV_TRN_EXIT  RTS ; return to the MAIN routine
 
 ;*******************************************************************
 
@@ -250,23 +275,8 @@ INIT_REV      BSET PORTA,%00000011 ; Set REV direction for both motors
 
 ;*******************************************************************
 
-INIT_ALL_STP  BCLR PTT,%00110000 ; Turn off the drive motors
-              RTS
-
-;*******************************************************************
-
-INIT_FWD_TRN  BSET PORTA,%00000010 ; Set REV dir. for STARBOARD (right) motor
-              LDAA TOF_COUNTER ; Mark the fwd_turn time Tfwdturn
-              ADDA #FWD_TRN_INT
-              STAA T_FWD_TRN
-              RTS
-
-;*******************************************************************
-INIT_REV_TRN  BCLR PORTA,%00000010 ; Set FWD dir. for STARBOARD (right) motor
-              LDAA TOF_COUNTER ; Mark the fwd time Tfwd
-              ADDA #REV_TRN_INT
-              STAA T_REV_TRN
-              RTS
+INIT_SBY     BCLR  PTT,%00110000  ; Turn off the drive motors
+             RTS
 
 ; utility subroutines
 ;*******************************************************************
@@ -391,7 +401,6 @@ int2BCD     XGDX      ; Save the binary number into .X
 
             XGDX ;Swap quotient back into .D
             LDX #10 ;and setup for another divide by 10
-            
             IDIV
             STAB HUNDREDS
             CPX #0
@@ -416,63 +425,63 @@ CON_EXIT    RTS ;We’re done the conversion
 BCD2ASC     LDAA  #0  ; Initialize the blanking flag
             STAA NO_BLANK
 
-C_TTHOU     LDAA TEN_THOUS ;Check the ’ten_thousands’ digit
-            ORAA NO_BLANK
-            BNE NOT_BLANK1
+  C_TTHOU:     LDAA TEN_THOUS ;Check the ’ten_thousands’ digit
+               ORAA NO_BLANK
+               BNE NOT_BLANK1
 
-ISBLANK1    LDAA #' '             ; It's blank
-            STAA TEN_THOUS ;so store a space
-            BRA  C_THOU ;and check the ’thousands’ digit
+  ISBLANK1:    LDAA #' '             ; It's blank
+               STAA TEN_THOUS ;so store a space
+               BRA  C_THOU ;and check the ’thousands’ digit
 
-NOT_BLANK1  LDAA TEN_THOUS ;Get the ’ten_thousands’ digit
-            ORAA #$30 ;Convert to ascii
-            STAA TEN_THOUS
-            LDAA #$1 ;Signal that we have seen a ’non-blank’ digit
-            STAA NO_BLANK
+  NOT_BLANK1:  LDAA TEN_THOUS ;Get the ’ten_thousands’ digit
+               ORAA #$30 ;Convert to ascii
+               STAA TEN_THOUS
+               LDAA #$1 ;Signal that we have seen a ’non-blank’ digit
+               STAA NO_BLANK
 
-C_THOU      LDAA THOUSANDS ;Check the thousands digit for blankness
-            ORAA NO_BLANK  ;If it’s blank and ’no-blank’ is still zero
-            BNE  NOT_BLANK2
+  C_THOU:      LDAA THOUSANDS ;Check the thousands digit for blankness
+               ORAA NO_BLANK  ;If it’s blank and ’no-blank’ is still zero
+               BNE  NOT_BLANK2
 
-ISBLANK2    LDAA  #' '  ; Thousands digit is blank
-            STAA THOUSANDS ;so store a space
-            BRA  C_HUNS ;and check the hundreds digit
+  ISBLANK2:    LDAA  #' '  ; Thousands digit is blank
+               STAA THOUSANDS ;so store a space
+               BRA  C_HUNS ;and check the hundreds digit
 
-NOT_BLANK2  LDAA THOUSANDS ;(similar to ’ten_thousands’ case)
-            ORAA #$30
-            STAA THOUSANDS
-            LDAA #$1
-            STAA NO_BLANK
+  NOT_BLANK2:  LDAA THOUSANDS ;(similar to ’ten_thousands’ case)
+               ORAA #$30
+               STAA THOUSANDS
+               LDAA #$1
+               STAA NO_BLANK
 
-C_HUNS      LDAA HUNDREDS ;Check the hundreds digit for blankness
-            ORAA NO_BLANK ;If it’s blank and ’no-blank’ is still zero
-            BNE NOT_BLANK3
+  C_HUNS:      LDAA HUNDREDS ;Check the hundreds digit for blankness
+               ORAA NO_BLANK ;If it’s blank and ’no-blank’ is still zero
+               BNE NOT_BLANK3
 
-ISBLANK3    LDAA  #' '  ; Hundreds digit is blank
-            STAA HUNDREDS ;so store a space
-            BRA C_TENS ;and check the tens digit
+  ISBLANK3:    LDAA  #' '  ; Hundreds digit is blank
+               STAA HUNDREDS ;so store a space
+               BRA C_TENS ;and check the tens digit
 
-NOT_BLANK3  LDAA HUNDREDS ;(similar to ’ten_thousands’ case)
-            ORAA #$30
-            STAA HUNDREDS
-            LDAA #$1
-            STAA NO_BLANK
+  NOT_BLANK3:  LDAA HUNDREDS ;(similar to ’ten_thousands’ case)
+               ORAA #$30
+               STAA HUNDREDS
+               LDAA #$1
+               STAA NO_BLANK
 
-C_TENS      LDAA TENS ;Check the tens digit for blankness
-            ORAA NO_BLANK ;If it’s blank and ’no-blank’ is still zero
-            BNE NOT_BLANK4  ;
+  C_TENS:      LDAA TENS ;Check the tens digit for blankness
+               ORAA NO_BLANK ;If it’s blank and ’no-blank’ is still zero
+               BNE NOT_BLANK4  ;
 
-ISBLANK4    LDAA  #' '  ; Tens digit is blank
-            STAA TENS ;so store a space
-            BRA C_UNITS ;and check the units digit
+  ISBLANK4:    LDAA  #' '  ; Tens digit is blank
+               STAA TENS ;so store a space
+               BRA C_UNITS ;and check the units digit
 
-NOT_BLANK4  LDAA TENS ;(similar to ’ten_thousands’ case)
-            ORAA #$30
-            STAA TENS
+  NOT_BLANK4:  LDAA TENS ;(similar to ’ten_thousands’ case)
+               ORAA #$30
+               STAA TENS
 
-C_UNITS     LDAA UNITS ;No blank check necessary, convert to ascii.
-            ORAA #$30
-            STAA UNITS
+  C_UNITS:     LDAA UNITS ;No blank check necessary, convert to ascii.
+               ORAA #$30
+               STAA UNITS
 
             RTS ;We’re done
 
