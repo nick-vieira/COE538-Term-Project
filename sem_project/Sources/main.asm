@@ -58,8 +58,11 @@ BK_TRK	    EQU 6
 ALL_STP     EQU 7
 
 ; variable section
-
             ORG $3000 ; Where our TOF counter register lives
+	    
+IRS_CNT1    DC.W 0 ; initialize first interrupt routine at address $0000
+IRS_CNT2    DC.W 0 ; initialize second interrupt routine at address $0000
+	    
 ; Storage Registers
 
 SENSOR_LINE FCB $01 ; Storage for guider sensor readings
@@ -105,8 +108,6 @@ ATDCTL5      RMB 4
 
 ;code section
             ORG $4000 
-; Initialization
-
 Entry:
 _Startup:
 
@@ -714,12 +715,26 @@ UPDT_DISPL  MOVB #$90,ATDCTL5 ; R-just., uns., sing. conv., mult., ch=0, start
             ABX ; "
             JSR putsLCD ; "
             RTS
+	    
+ISR_A	   MOVB #$01, TFLG1 ; initialize input capture for interrupt
+	   INC ISR_CNT1 ; increment the first counter
+	   RTI ; return to normal program execution
 
+ISR_B	   MOVB #$02, TFLG1 ; initialize input capture for interrupt
+	   INC ISR_CNT2  increment the second counter
+	   RTI ; return to normal program execution
+	   
 ;*******************************************************************
 ;* Interrupt Vectors *
 ;*******************************************************************
             ORG $FFFE
             DC.W Entry ; Reset Vector
             
+	    ORG $FFEE
+	    DC.W ISR_A ; allocation of the first interrupt routine
+	    
+	    ORG $FFEC
+	    DC.W ISR_B ; allocation of the second interrupt routine
+	    
             ORG $FFDE
             DC.W TOF_ISR ; Timer Overflow Interrupt Vector
