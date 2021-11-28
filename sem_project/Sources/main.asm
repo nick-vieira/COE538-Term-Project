@@ -238,6 +238,14 @@ LT_TURN       LDAA  NEXT_D   ; Push direction for the previous
               JSR   INIT_LT_TRN  ; The robot should make a LEFT turn
               MOVB  #LT_TRN,CRNT_STATE ; Initialize the LT_TRN state             
 
+RT_TURN       LDAA  NEXT_D   ; Push direction for the previous
+              PSHA      ; Intersection to the stack pointer
+              LDAA  SEC_PTH_INT ; Then store direction taken to NEXT_D
+              STAA  NEXT_D 
+              JSR   INIT_RT_TRN  ; The robot should make a RIGHT turn
+              MOVB  #RT_TRN,CRNT_STATE ; Initialize the RT_TRN state
+	      
+	      
 FWD_EXIT    RTS ; return to the MAIN routine
 
 ;*******************************************************************
