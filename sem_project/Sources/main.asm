@@ -14,7 +14,28 @@
           
 ; Include derivative-specific definitions 
 		        INCLUDE 'derivative.inc'
-		       
+
+;LCD equates section
+
+CLEAR_HOME    EQU $01  ;Clear display and home cursor
+INTERFACE     EQU $38  ;8-bit interface, two line display
+CURSOR_OFF    EQU $0C  ;Display on, cursor off
+SHIFT_OFF     EQU $06  ;Address increments without character shifts
+LCD_SEC_LINE  EQU 64   ;Starting addr, of 2nd line of LCD
+            
+;LCD addresses
+
+LCD_CNTR  EQU PTJ   ; LCD Control Register: E = PJ7, RS = PJ6
+LCD_DAT   EQU PORTB ; LCD Data Register: D7 = PB7, ... , D0 = PB0
+LCD_RS    EQU $40   ; LCD RS-signal pin
+LCD_E     EQU $80   ; LCD E-signal pin
+            
+; Other codes
+
+NULL  EQU 00  ; The string ’null terminator’
+CR    EQU $0D ; ’Carriage Return’ character
+SPACE EQU ' ' ; The ’space’ character		       
+
 ; equates section
 
 LCD_DAT     EQU PORTB ; LCD data port
