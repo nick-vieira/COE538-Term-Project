@@ -334,7 +334,92 @@ INIT_REV      BSET PORTA,%00000011 ; Set REV direction for both motors
 
 INIT_SBY     BCLR  PTT,%00110000  ; Turn off the drive motors
              RTS
+; Guider LEDs ON
 
+G_LEDS_ON   BSET PORTA,%00100000 ; Set bit 5
+            RTS
+            
+; Guider LEDs OFF
+
+G_LEDS_OFF  BCLR PORTA,%00100000 ; Clear bit 5
+            RTS
+            
+;Read Sensors
+
+READ_SENSORS  CLR SENSOR_NUM       ; Select sensor number 0
+              LDX #SENSOR_LINE     ; Point at the start of the sensor array
+              
+RS_MAIN_LOOP  LDAA SENSOR_NUM      ; Select the correct sensor input
+              JSR SELECT_SENSOR    ; on the hardware
+              LDY #400             ; 20 ms delay to allow the
+              JSR del_50us         ; sensor to stabilize
+              LDAA #%10000001      ; Start A/D conversion on AN1
+              STAA ATDCTL5
+              BRCLR ATDSTAT0,$80,* ; Repeat until A/D signals done
+              LDAA ATDDR0L         ; A/D conversion is complete in ATDDR0L
+              STAA 0,X             ; so copy it to the sensor register
+              CPX #SENSOR_STBD     ; If this is the last reading
+              BEQ RS_EXIT          ; Then exit
+              INC SENSOR_NUM       ; Else, increment the sensor number
+              INX                  ; and the pointer into the sensor array
+              BRA RS_MAIN_LOOP     ; and do it again
+              
+RS_EXIT       RTS   
+
+;Select Sensors
+
+SELECT_SENSOR PSHA            ; Save the sensor number for the moment
+              LDAA PORTA      ; Clear the sensor selection bits to zeros
+              ANDA #%11100011 ;
+              STAA TEMP       ; and save it into TEMP
+              PULA            ; Get the sensor number
+              ASLA            ; Shift the selection number left, twice
+              ASLA 
+              ANDA #%00011100 ; Clear irrelevant bit positions
+              ORAA TEMP       ; OR it into the sensor bit positions
+              STAA PORTA      ; Update the hardware
+              RTS         
+            
+;Display Sensor Readings
+
+DP_FRONT_SENSOR EQU TOP_LINE+3
+DP_PORT_SENSOR  EQU BOT_LINE+0
+DP_MID_SENSOR   EQU BOT_LINE+3
+DP_STBD_SENSOR  EQU BOT_LINE+6
+DP_LINE_SENSOR  EQU BOT_LINE+9
+DISPLAY_SENSORS LDAA SENSOR_BOW      ; Get the FRONT sensor value
+
+                JSR BIN2ASC          ; Convert to ascii string in D
+                LDX #DP_FRONT_SENSOR ; Point to the LCD buffer position
+                STD 0,X              ; and write the 2 ascii digits there
+                LDAA SENSOR_PORT     ; Repeat for the PORT value
+                JSR BIN2ASC
+                LDX #DP_PORT_SENSOR
+                STD 0,X
+                LDAA SENSOR_MID      ; Repeat for the MID value
+                JSR BIN2ASC
+                LDX #DP_MID_SENSOR
+                STD 0,X
+                LDAA SENSOR_STBD     ; Repeat for the STARBOARD value
+                JSR BIN2ASC
+                LDX #DP_STBD_SENSOR
+                STD 0,X
+                LDAA SENSOR_LINE     ; Repeat for the LINE value
+                JSR BIN2ASC
+                LDX #DP_LINE_SENSOR
+                STD 0,X
+                LDAA #CLEAR_HOME     ; Clear the display and home the cursor
+                JSR cmd2LCD          ; "
+                LDY #40              ; Wait 2 ms until "clear display" command is complete
+                JSR del_50us
+                LDX #TOP_LINE        ; Now copy the buffer top line to the LCD
+                JSR putsLCD
+                LDAA #LCD_SEC_LINE   ; Position the LCD cursor on the second line
+                JSR LCD_POS_CRSR
+                LDX #BOT_LINE        ; Copy the buffer bottom line to the LCD
+                JSR putsLCD
+                RTS
+		
 ; utility subroutines
 ;*******************************************************************
 
