@@ -58,10 +58,8 @@ BK_TRK	    EQU 6
 ALL_STP     EQU 7
 
 ; variable section
-            ORG $3000 ; Where our TOF counter register lives
-IRS_CNT1      DC.W  0 ; initialize 2-byte IRS_CNT1 to $0000
-IRS_CNT2      DC.W  0 ; initialize 2-byte IRS_CNT2 to $0000
 
+            ORG $3000 ; Where our TOF counter register lives
 ; Storage Registers
 
 SENSOR_LINE FCB $01 ; Storage for guider sensor readings
@@ -421,8 +419,50 @@ DISPLAY_SENSORS LDAA SENSOR_BOW      ; Get the FRONT sensor value
                 LDX #BOT_LINE        ; Copy the buffer bottom line to the LCD
                 JSR putsLCD
                 RTS
-		
+
+;Binary to ASCII
+                
+HEX_TABLE       FCC '0123456789ABCDEF' ; Table for converting values
+
+BIN2ASC         PSHA ; Save a copy of the input number on the stack
+                TAB ; and copy it into ACCB
+                ANDB #%00001111 ; Strip off the upper nibble of ACCB
+                CLRA ; D now contains 000n where n is the LSnibble
+                ADDD #HEX_TABLE ; Set up for indexed load
+                XGDX
+                LDAA 0,X ; Get the LSnibble character
+                PULB ; Retrieve the input number into ACCB
+                PSHA ; and push the LSnibble character in its place
+                RORB ; Move the upper nibble of the input number
+                RORB ; into the lower nibble position.
+                RORB
+                RORB
+                ANDB #%00001111 ; Strip off the upper nibble
+                CLRA ; D now contains 000n where n is the MSnibble
+                ADDD #HEX_TABLE ; Set up for indexed load
+                XGDX
+                LDAA 0,X ; Get the MSnibble character into ACCA
+                PULB ; Retrieve the LSnibble character into ACCB
+                RTS
+                
 ; utility subroutines
+
+;*****************************************************************
+; Initialize the LCD
+
+openLCD         LDY #2000 ; Wait 100 ms for LCD to be ready
+                JSR del_50us ; "
+                LDAA #INTERFACE ; Set 8-bit data, 2-line display, 5x8 font
+                JSR cmd2LCD ; "
+                LDAA #CURSOR_OFF ; Display on, cursor off, blinking off
+                JSR cmd2LCD ; "
+                LDAA #SHIFT_OFF ; Move cursor right (address increments, no char. shift)
+                JSR cmd2LCD ; "
+                LDAA #CLEAR_HOME ; Clear the display and home the cursor
+                JSR cmd2LCD ; "
+                LDY #40 ; Wait 2 ms until "clear display" command is complete
+                JSR del_50us ; "
+                RTS
 ;*******************************************************************
 
 initLCD     BSET DDRB,%11111111 ; configure pins PS7,PS6,PS5,PS4 for output
@@ -487,7 +527,14 @@ dataMov         BSET LCD_CNTR,LCD_E ; pull the LCD E-sigal high
                 LDY #1 ; adding this delay will complete the internal
                 JSR del_50us ; operation for most instructions
                 RTS 
-            
+
+;*******************************************************************
+;Position the cursor
+
+LCD_POS_CRSR    ORAA #%10000000 ; Set the high bit of the control word
+                JSR cmd2LCD ; and set the cursor address
+                RTS
+		
 ;*******************************************************************
 
 initAD      MOVB #$C0,ATDCTL2 ;power up AD, select fast flag clear
@@ -499,7 +546,6 @@ initAD      MOVB #$C0,ATDCTL2 ;power up AD, select fast flag clear
 
 ;*******************************************************************
 
-HEX_TABLE   FCC '0123456789ABCDEF'  ; Table for converting values
 int2BCD     XGDX      ; Save the binary number into .X
             LDAA #0   ;lear the BCD_BUFFER
             STAA TEN_THOUS
@@ -668,26 +714,12 @@ UPDT_DISPL  MOVB #$90,ATDCTL5 ; R-just., uns., sing. conv., mult., ch=0, start
             ABX ; "
             JSR putsLCD ; "
             RTS
-	    
-ISR_A	   MOVB #$01,TFLG1  ; clear the C0F input capture flag
-	   INC IRS_CNT1  ; increment the first interrupt counter
-	   RTI	; return to normal code execution
-	   
-ISR_B	   MOVB #02, TFLG!  ; clear the C1F input capture flag
-	   INC IRS_CNT2  ; increment the second interrupt counter
-	   RTI	; return to normal code execution
 
 ;*******************************************************************
 ;* Interrupt Vectors *
 ;*******************************************************************
             ORG $FFFE
             DC.W Entry ; Reset Vector
-	    
-	    ORG $FFEE
-	    DC.W IRS_A ; allocate 2 bytes for first interrupt routine
-	    
-	    ORG $FFEC
-	    DC.W ISR_B ; allocate 2 bytes for second interrupt routine
             
             ORG $FFDE
             DC.W TOF_ISR ; Timer Overflow Interrupt Vector
