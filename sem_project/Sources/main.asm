@@ -49,7 +49,7 @@ THOUSANDS   ds.b 1 ; 1,000 digit
 HUNDREDS    ds.b 1 ; 100 digit
 TENS        ds.b 1 ; 10 digit
 UNITS       ds.b 1 ; 1 digit
-NO_BLANK    ds.b 1 ; Used in ’leading zero’ blanking by BCD2ASC
+NO_BLANK    ds.b 1 ; Used in â€™leading zeroâ€™ blanking by BCD2ASC
 BCD_SPARE   RMB 10   ; Extra space for decimal point and string terminator
 
 ;ATD variables
@@ -165,7 +165,7 @@ tab         dc.b "START ",0
 
 ;subroutine section
 
-DISPATCHER  CMPA #START ; If it’s the START state 
+DISPATCHER  CMPA #START ; If itâ€™s the START state 
             BNE NOT_START 
             JSR START_ST ; then call START_ST routine       
             BRA DISP_EXIT ; and exit                        
@@ -185,7 +185,7 @@ NOT_REV       CMPA #LT_TRN ;Else if it's the LT_TRN state
               JSR LT_TRN_ST ; then call the LT_TRN routine
               JMP DISP_EXIT ; and exit
             
-NOT_LT_TRN  CMPA #RT_TRN
+NOT_LT_TRN  CMPA #RT_TRN ;Else if it's the RT_TRN state
             BNE NOT_RT_TRN
             JSR RT_TRN_ST ; then call the REV_TRN routine
             JMP DISP_EXIT ; and exit
@@ -194,10 +194,6 @@ NOT_RT_TRN  CMPA #REV
             BNE NOT_REV
             JSR REV_ST ; then call the REVERSE routine
             JMP DISP_EXIT ; and exit
-            
-NOT_REVERSE  CMPA #BK_TRK  
-             BNE NOT_BK_TRK 
-             JMP BK_TRK_ST
                 
 NOT_BK_TRK   CMPA #SBY                     
              BNE NOT_SBY  
@@ -418,64 +414,64 @@ int2BCD     XGDX      ; Save the binary number into .X
             IDIV
             STAB TEN_THOUS
 
-CON_EXIT    RTS ;We’re done the conversion
+CON_EXIT    RTS ;Weâ€™re done the conversion
 
 ;*******************************************************************
 
 BCD2ASC     LDAA  #0  ; Initialize the blanking flag
             STAA NO_BLANK
 
-  C_TTHOU:     LDAA TEN_THOUS ;Check the ’ten_thousands’ digit
+  C_TTHOU:     LDAA TEN_THOUS ;Check the â€™ten_thousandsâ€™ digit
                ORAA NO_BLANK
                BNE NOT_BLANK1
 
   ISBLANK1:    LDAA #' '             ; It's blank
                STAA TEN_THOUS ;so store a space
-               BRA  C_THOU ;and check the ’thousands’ digit
+               BRA  C_THOU ;and check the â€™thousandsâ€™ digit
 
-  NOT_BLANK1:  LDAA TEN_THOUS ;Get the ’ten_thousands’ digit
+  NOT_BLANK1:  LDAA TEN_THOUS ;Get the â€™ten_thousandsâ€™ digit
                ORAA #$30 ;Convert to ascii
                STAA TEN_THOUS
-               LDAA #$1 ;Signal that we have seen a ’non-blank’ digit
+               LDAA #$1 ;Signal that we have seen a â€™non-blankâ€™ digit
                STAA NO_BLANK
 
   C_THOU:      LDAA THOUSANDS ;Check the thousands digit for blankness
-               ORAA NO_BLANK  ;If it’s blank and ’no-blank’ is still zero
+               ORAA NO_BLANK  ;If itâ€™s blank and â€™no-blankâ€™ is still zero
                BNE  NOT_BLANK2
 
   ISBLANK2:    LDAA  #' '  ; Thousands digit is blank
                STAA THOUSANDS ;so store a space
                BRA  C_HUNS ;and check the hundreds digit
 
-  NOT_BLANK2:  LDAA THOUSANDS ;(similar to ’ten_thousands’ case)
+  NOT_BLANK2:  LDAA THOUSANDS ;(similar to â€™ten_thousandsâ€™ case)
                ORAA #$30
                STAA THOUSANDS
                LDAA #$1
                STAA NO_BLANK
 
   C_HUNS:      LDAA HUNDREDS ;Check the hundreds digit for blankness
-               ORAA NO_BLANK ;If it’s blank and ’no-blank’ is still zero
+               ORAA NO_BLANK ;If itâ€™s blank and â€™no-blankâ€™ is still zero
                BNE NOT_BLANK3
 
   ISBLANK3:    LDAA  #' '  ; Hundreds digit is blank
                STAA HUNDREDS ;so store a space
                BRA C_TENS ;and check the tens digit
 
-  NOT_BLANK3:  LDAA HUNDREDS ;(similar to ’ten_thousands’ case)
+  NOT_BLANK3:  LDAA HUNDREDS ;(similar to â€™ten_thousandsâ€™ case)
                ORAA #$30
                STAA HUNDREDS
                LDAA #$1
                STAA NO_BLANK
 
   C_TENS:      LDAA TENS ;Check the tens digit for blankness
-               ORAA NO_BLANK ;If it’s blank and ’no-blank’ is still zero
+               ORAA NO_BLANK ;If itâ€™s blank and â€™no-blankâ€™ is still zero
                BNE NOT_BLANK4  ;
 
   ISBLANK4:    LDAA  #' '  ; Tens digit is blank
                STAA TENS ;so store a space
                BRA C_UNITS ;and check the units digit
 
-  NOT_BLANK4:  LDAA TENS ;(similar to ’ten_thousands’ case)
+  NOT_BLANK4:  LDAA TENS ;(similar to â€™ten_thousandsâ€™ case)
                ORAA #$30
                STAA TENS
 
@@ -483,7 +479,7 @@ BCD2ASC     LDAA  #0  ; Initialize the blanking flag
                ORAA #$30
                STAA UNITS
 
-            RTS ;We’re done
+            RTS ;Weâ€™re done
 
 ;*******************************************************************
 
