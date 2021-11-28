@@ -60,7 +60,24 @@ ALL_STP     EQU 7
 ; variable section
 
             ORG $3000 ; Where our TOF counter register lives
+; Storage Registers
+
+SENSOR_LINE FCB $01 ; Storage for guider sensor readings
+SENSOR_BOW  FCB $23 ; Initialized to test values
+SENSOR_PORT FCB $45
+SENSOR_MID  FCB $67
+SENSOR_STBD FCB $89
+SENSOR_NUM  RMB 1   ; The currently selected sensor
             
+TOP_LINE   RMB 20 ; Top line of display
+           FCB NULL ; terminated by null
+BOT_LINE   RMB 20 ; Bottom line of display
+           FCB NULL ; terminated by null
+CLEAR_LINE FCC ' '
+           FCB NULL ; terminated by null
+TEMP       RMB 1 ; Temporary location
+
+
 TOF_COUNTER dc.b 0 ; The timer, incremented at 23Hz
 CRNT_STATE  dc.b 3 ; Current state register
 T_FWD       ds.b 1 ; FWD time
@@ -87,7 +104,9 @@ ATDCTL4      RMB 4
 ATDCTL5      RMB 4
 
 ;code section
-            ORG $3000 ; Where our TOF counter register lives
+            ORG $4000 
+; Initialization
+
 Entry:
 _Startup:
 
