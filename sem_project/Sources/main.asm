@@ -332,27 +332,8 @@ INIT_REV      BSET PORTA,%00000011 ; Set REV direction for both motors
 
 ;*******************************************************************
 
-INIT_LT_TRN
-
-;*******************************************************************
-
-INIT_RT_TRN
-
-;*******************************************************************
-
-INIT_REV_TRN
-
-;*******************************************************************
-
-INIT_ALL_STP
-
-;*******************************************************************
-
 INIT_SBY     BCLR  PTT,%00110000  ; Turn off the drive motors
              RTS
-	     
-;*******************************************************************
-
 ; Guider LEDs ON
 
 G_LEDS_ON   BSET PORTA,%00100000 ; Set bit 5
@@ -490,7 +471,13 @@ iloop:      PSHA    ;2 E-clk |
 cmd2LCD:    BCLR LCD_CNTR,LCD_RS ; select the LCD Instruction Register (IR)
             JSR dataMov ; send data to IR
             RTS
+	    	    
+;*******************************************************************
 
+putcLCD     BSET LCD_CNTR,LCD_RS ; select the LCD Data register (DR)
+            JSR dataMov ; send data to DR
+            RTS    
+	    
 ;*******************************************************************
 
 putsLCD     LDAA 1, X+ ; get one character from the string
@@ -499,12 +486,6 @@ putsLCD     LDAA 1, X+ ; get one character from the string
             BRA putsLCD
             
 donePS      RTS
-
-;*******************************************************************
-
-putcLCD     BSET LCD_CNTR,LCD_RS ; select the LCD Data register (DR)
-            JSR dataMov ; send data to DR
-            RTS
 
 ;*******************************************************************
 
