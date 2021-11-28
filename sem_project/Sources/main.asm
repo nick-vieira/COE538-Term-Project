@@ -30,9 +30,11 @@ REV_TRN_INT EQU 46 ; 2 second delay (at 23Hz)
 START       EQU 0
 FWD         EQU 1
 REV         EQU 2
-ALL_STP     EQU 3
-FWD_TRN     EQU 4
+LT_TRN      EQU 3
+RT_TRN	    EQU	4
 REV_TRN     EQU 5
+BK_TRK	    EQU 6
+ALL_STP     EQU 7
 
 ; variable section
 
@@ -180,10 +182,10 @@ NOT_FORWARD   CMPA #REV ;Else if it's the REVERSE state
               JSR REV_ST ; then call the REVERSE routine
               JMP DISP_EXIT ; and exit
             
-NOT_REV       CMPA #LT_TRN ;Else if it's the LT_TRN state
-              BNE NOT_LT_TRN
-              JSR LT_TRN_ST ; then call the LT_TRN routine
-              JMP DISP_EXIT ; and exit
+NOT_REV      CMPA #LT_TRN ;Else if it's the LT_TRN state
+             BNE NOT_LT_TRN
+             JSR LT_TRN_ST ; then call the LT_TRN routine
+             JMP DISP_EXIT ; and exit
             
 NOT_LT_TRN  CMPA #RT_TRN ;Else if it's the RT_TRN state
             BNE NOT_RT_TRN
@@ -194,11 +196,22 @@ NOT_RT_TRN  CMPA #REV_TRN  ;Else if it's the REV_TRN state
             BNE NOT_REV_TRN
             JSR REV_TRN_ST ; then call the REVERSE TURN routine
             JMP DISP_EXIT ; and exit
+	    
+NOT_REV_TRN  CMPA #BK_TRK  
+             BNE NOT_BK_TRK 
+             JMP BK_TRK_ST
+	     JMP DISP_EXIT ; and exit	    
                 
-NOT_BK_TRK   CMPA #SBY                     
+NOT_BK_TRK   CMPA #ALL_STP
+	     BNE NOT_ALL_STP
+	     JSR ALL_STP_ST
+	     JMP DISP_EXIT1
+	     JMP DISP_EXIT ; and exit
+	     
+NOT_ALL_STP  CMPA #SBY                     
              BNE NOT_SBY  
              JSR SBY_ST   
-             JMP DISP_EXITl               
+             JMP DISP_EXITl ; and exit               
 
 NOT_SBY     NOP       
 DISP_EXIT   RTS ; Exit from the state dispatcher ----------
