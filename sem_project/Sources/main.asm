@@ -445,26 +445,13 @@ clrLCD      LDAA #$01 ; clear cursor and return to home position
 
 ;*******************************************************************
 
-del_50us:   PSHX ;2 E-clk
-eloop:      LDX #30 ;2 E-clk -
-iloop:      PSHA    ;2 E-clk |
-            PULA    ;3 E-clk |
-            PSHA    ;2 E-clk | 50us
-            PULA    ;3 E-clk |
-            PSHA    ;2 E-clk |
-            PULA    ;3 E-clk |
-            PSHA    ;2 E-clk |
-            PULA    ;3 E-clk |
-            PSHA    ;2 E-clk |
-            PULA    ;3 E-clk |
-            PSHA    ;2 E-clk |
-            PULA    ;3 E-clk |
-            NOP     ;1 E-clk |
-            NOP     ;1 E-clk |
-            DBNE X,iloop ;3 E-clk -
-            DBNE Y,eloop ;3 E-clk
-            PULX ;3 E-clk
-            RTS ;5 E-clk
+del_50us        PSHX ; (2 E-clk) Protect the X register
+eloop           LDX #300 ; (2 E-clk) Initialize the inner loop counter
+iloop           NOP ; (1 E-clk) No operation
+                DBNE X,iloop ; (3 E-clk) If the inner cntr not 0, loop again
+                DBNE Y,eloop ; (3 E-clk) If the outer cntr not 0, loop again
+                PULX ; (3 E-clk) Restore the X register
+                RTS ; (5 E-clk) Else return  
 
 ;*******************************************************************
 
