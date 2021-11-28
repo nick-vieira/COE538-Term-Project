@@ -187,12 +187,12 @@ NOT_REV       CMPA #LT_TRN ;Else if it's the LT_TRN state
             
 NOT_LT_TRN  CMPA #RT_TRN ;Else if it's the RT_TRN state
             BNE NOT_RT_TRN
-            JSR RT_TRN_ST ; then call the REV_TRN routine
+            JSR RT_TRN_ST ; then call the RT_TRN routine
             JMP DISP_EXIT ; and exit
             
-NOT_RT_TRN  CMPA #REV
-            BNE NOT_REV
-            JSR REV_ST ; then call the REVERSE routine
+NOT_RT_TRN  CMPA #REV_TRN  ;Else if it's the REV_TRN state
+            BNE NOT_REV_TRN
+            JSR REV_TRN_ST ; then call the REVERSE TURN routine
             JMP DISP_EXIT ; and exit
                 
 NOT_BK_TRK   CMPA #SBY                     
