@@ -58,8 +58,10 @@ BK_TRK	    EQU 6
 ALL_STP     EQU 7
 
 ; variable section
-
             ORG $3000 ; Where our TOF counter register lives
+IRS_CNT1      DC.W  0 ; initialize 2-byte IRS_CNT1 to $0000
+IRS_CNT2      DC.W  0 ; initialize 2-byte IRS_CNT2 to $0000
+
 ; Storage Registers
 
 SENSOR_LINE FCB $01 ; Storage for guider sensor readings
@@ -497,6 +499,7 @@ initAD      MOVB #$C0,ATDCTL2 ;power up AD, select fast flag clear
 
 ;*******************************************************************
 
+HEX_TABLE   FCC '0123456789ABCDEF'  ; Table for converting values
 int2BCD     XGDX      ; Save the binary number into .X
             LDAA #0   ;lear the BCD_BUFFER
             STAA TEN_THOUS
@@ -665,12 +668,26 @@ UPDT_DISPL  MOVB #$90,ATDCTL5 ; R-just., uns., sing. conv., mult., ch=0, start
             ABX ; "
             JSR putsLCD ; "
             RTS
+	    
+ISR_A	   MOVB #$01,TFLG1  ; clear the C0F input capture flag
+	   INC IRS_CNT1  ; increment the first interrupt counter
+	   RTI	; return to normal code execution
+	   
+ISR_B	   MOVB #02, TFLG!  ; clear the C1F input capture flag
+	   INC IRS_CNT2  ; increment the second interrupt counter
+	   RTI	; return to normal code execution
 
 ;*******************************************************************
 ;* Interrupt Vectors *
 ;*******************************************************************
             ORG $FFFE
             DC.W Entry ; Reset Vector
+	    
+	    ORG $FFEE
+	    DC.W IRS_A ; allocate 2 bytes for first interrupt routine
+	    
+	    ORG $FFEC
+	    DC.W ISR_B ; allocate 2 bytes for second interrupt routine
             
             ORG $FFDE
             DC.W TOF_ISR ; Timer Overflow Interrupt Vector
