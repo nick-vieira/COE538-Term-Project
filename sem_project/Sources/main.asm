@@ -38,11 +38,6 @@ SPACE EQU ' ' ; The ’space’ character
 
 ; equates section
 
-LCD_DAT     EQU PORTB ; LCD data port
-LCD_CNTR    EQU PTJ
-LCD_E       EQU $80   ;LCD E-signal pin
-LCD_RS      EQU $40   ;LCD RS-signal pin
-
 FWD_INT     EQU 69 ; 3 second delay (at 23Hz)
 REV_INT     EQU 69 ; 3 second delay (at 23Hz)
 FWD_TRN_INT EQU 46 ; 2 second delay (at 23Hz)
@@ -80,6 +75,7 @@ CLEAR_LINE FCC ' '
            FCB NULL ; terminated by null
 TEMP       RMB 1 ; Temporary location
 
+; variable section
 
 TOF_COUNTER dc.b 0 ; The timer, incremented at 23Hz
 CRNT_STATE  dc.b 3 ; Current state register
@@ -112,6 +108,7 @@ Entry:
 _Startup:
 
             LDS $4000 ;Stack pointer initialization
+            CLI
             JSR initPORTS  ;
             JSR initAD   ;AD converter
             JSR initLCD ;LCD initlization
@@ -136,11 +133,164 @@ _Startup:
             JSR cmd2LCD
             LDX #msg4   ;Display msg4
             JSR putsLCD
-                       
+            
+            JSR ENABLE_TOF  ; jump to TOF initialization
+            
+MAIN        JSR G_LEDS_ON   ; Enable guider LEDs
+            JSR READ_SENSORS  ; Read guider snesors
+            JSR G_LEDS_OFF  ; Disable guider LEDs
+            LDY #2000   ; set 300 ms delay for eebot to avoid
+            JSR del_50us   ; jump to delay routine         
+     
+;data section
 
-;************************************************************
-;* Motor Control                                            *
-;************************************************************
+msg1        dc.b "State ",0
+msg2        dc.b "Readings ",0
+msg3:       dc.b "Battery Voltage ",0
+msg4        dc.b "Bumper status ",0
+tab         dc.b "START ",0
+            dc.b "FWD ",0
+            dc.b "REV ",0
+            dc.b "ALL_STP",0
+            dc.b "FWD_TRN",0
+            dc.b "REV_TRN",0
+
+;subroutine section
+
+DISPATCHER  CMPA #START ; If it’s the START state 
+            BNE NOT_START 
+            JSR START_ST ; then call START_ST routine       
+            BRA DISP_EXIT ; and exit                        
+;                                                           
+NOT_START   CMPA #FWD ;Else if it's the FORWARD state
+            BNE NO_FWD
+            JSR FWD_ST ; then call the FORWARD routine
+            JMP DISP_EXIT ; and exit
+            
+NOT_FORWARD   CMPA #REV ;Else if it's the REVERSE state
+              BNE NOT_REV
+              JSR REV_ST ; then call the REVERSE routine
+              JMP DISP_EXIT ; and exit
+            
+NOT_REV      CMPA #LT_TRN ;Else if it's the LT_TRN state
+             BNE NOT_LT_TRN
+             JSR LT_TRN_ST ; then call the LT_TRN routine
+             JMP DISP_EXIT ; and exit
+            
+NOT_LT_TRN  CMPA #RT_TRN ;Else if it's the RT_TRN state
+            BNE NOT_RT_TRN
+            JSR RT_TRN_ST ; then call the RT_TRN routine
+            JMP DISP_EXIT ; and exit
+            
+NOT_RT_TRN  CMPA #REV_TRN  ;Else if it's the REV_TRN state
+            BNE NOT_REV_TRN
+            JSR REV_TRN_ST ; then call the REVERSE TURN routine
+            JMP DISP_EXIT ; and exit
+	    
+NOT_REV_TRN  CMPA #BK_TRK  
+             BNE NOT_BK_TRK 
+             JMP BK_TRK_ST
+	           JMP DISP_EXIT ; and exit	    
+                
+NOT_BK_TRK   CMPA #ALL_STP
+	           BNE NOT_ALL_STP
+	           JSR ALL_STP_ST
+	           JMP DISP_EXIT1
+	           JMP DISP_EXIT ; and exit
+	     
+NOT_ALL_STP  CMPA #SBY                     
+             BNE NOT_SBY  
+             JSR SBY_ST   
+             JMP DISP_EXITl ; and exit               
+
+NOT_SBY     NOP       
+DISP_EXIT   RTS ; Exit from the state dispatcher ----------
+
+;*******************************************************************
+
+START_ST    BRCLR PORTAD0, $04, NO_FWD ;If FWD_BUMP
+            JSR INIT_FWD ; initialize the FWD state
+            MOVB #FWD, CRNT_STATE  ; Go into the FWD state
+            
+NO_FWD      NOP ; Else
+START_EXIT  RTS ; return to the MAIN routine
+
+;*******************************************************************
+
+FWD_ST      BRSET PORTAD0, $04, NO_FWD_BUMP ; if FWD_BUMP then
+            JSR INIT_REV   ; initialize the REVRSE routine
+            MOVB #REV, CRNT_STATE  ;set the state to REVERSE
+            JMP FWD_EXIT  ; return
+            
+NO_FWD_BUMP BRSET PORTAD0,$08,NO_REV_BUMP ; If REAR_BUMP, then we should stop
+            JSR INIT_ALL_STP ; so initialize the ALL_STOP state
+            MOVB #ALL_STP_ST, CRNT_STATE ; and change state to ALL_STOP
+            JMP FWD_EXIT ; and return
+            
+NO_REV_BUMP  LDAA TOF_COUNTER ; If Tc>Tfwd then
+             CMPA T_FWD ; the robot should make a turn
+             BNE NO_LT_TRN ; so
+             JSR INIT_LT_TRN ; initialize the FORWARD_TURN state
+             MOVB #LT_TRN,CRNT_STATE ; and go to that state
+             JMP FWD_EXIT
+             
+LT_TURN       LDAA  NEXT_D   ; Push direction for the previous
+              PSHA      ; Intersection to the stack pointer
+              LDAA  SEC_PTH_INT ; Then store direction taken to NEXT_D
+              STAA  NEXT_D 
+              JSR   INIT_LT_TRN  ; The robot should make a LEFT turn
+              MOVB  #LT_TRN,CRNT_STATE ; Initialize the LT_TRN state
+              JMP FWD_EXIT             
+
+RT_TURN       LDAA  NEXT_D   ; Push direction for the previous
+              PSHA      ; Intersection to the stack pointer
+              LDAA  SEC_PTH_INT ; Then store direction taken to NEXT_D
+              STAA  NEXT_D 
+              JSR   INIT_RT_TRN  ; The robot should make a RIGHT turn
+              MOVB  #RT_TRN,CRNT_STATE ; Initialize the RT_TRN state
+              JMP FWD_EXIT
+	      
+	      
+FWD_EXIT    RTS ; return to the MAIN routine
+
+;*******************************************************************
+
+REV_ST      LDAA TOF_COUNTER ; If Tc>Trev then
+            CMPA T_REV ; the robot should make a FWD turn
+            BNE NO_REV_TRN ; so
+            JSR INIT_REV_TRN ; initialize the REV_TRN state
+            MOVB #REV_TRN,CRNT_STATE ; set state to REV_TRN
+            BRA REV_EXIT ; and return
+NO_REV_TRN  NOP ; Else
+REV_EXIT    RTS ; return to the MAIN routine
+
+;*******************************************************************
+
+INIT_FWD      BCLR PORTA,%00000011 ; Set FWD direction for both motors
+              BSET PTT,%00110000 ; Turn on the drive motors
+              LDAA TOF_COUNTER ; Mark the fwd time Tfwd
+              ADDA #FWD_INT
+              STAA T_FWD
+              RTS
+
+;*******************************************************************
+
+INIT_REV      BSET PORTA,%00000011 ; Set REV direction for both motors
+              BSET PTT,%00110000 ; Turn on the drive motors
+              LDAA TOF_COUNTER ; Mark the fwd time Tfwd
+              ADDA #REV_INT
+              STAA T_REV
+              RTS
+              
+;*******************************************************************
+
+INIT_ALL_STP    BCLR  PTT,%00110000  ; Turn off the drive motors
+                RTS
+                                                     
+;*******************************************************************
+
+;Motor control
+
             BSET DDRA,%00000011
             BSET DDRT,%00110000
             JSR  STARFWD
@@ -193,148 +343,41 @@ PORTREV     LDAA PORTA
             STAA PTH
             RTS
 
-;data section
+; Initialize the ADC
 
-msg1        dc.b "State ",0
-msg2        dc.b "Readings ",0
-msg3:       dc.b "Battery Voltage ",0
-msg4        dc.b "Bumper status ",0
-tab         dc.b "START ",0
-            dc.b "FWD ",0
-            dc.b "REV ",0
-            dc.b "ALL_STP",0
-            dc.b "FWD_TRN",0
-            dc.b "REV_TRN",0
-
-;subroutine section
-
-DISPATCHER  CMPA #START ; If it’s the START state 
-            BNE NOT_START 
-            JSR START_ST ; then call START_ST routine       
-            BRA DISP_EXIT ; and exit                        
-;                                                           
-NOT_START   CMPA #FWD ;Else if it's the FORWARD state
-            BNE NO_FWD
-            JSR FWD_ST ; then call the FORWARD routine
-            JMP DISP_EXIT ; and exit
+openADC     MOVB #$80,ATDCTL2 ; Turn on ADC (ATDCTL2 @ $0082)
+            LDY #1            ; Wait for 50 us for ADC to be ready
+            JSR del_50us ; - " -
+            MOVB #$20,ATDCTL3 ; 4 conversions on channel AN1 (ATDCTL3 @ $0083)
+            MOVB #$97,ATDCTL4 ; 8-bit resolution, prescaler=48 (ATDCTL4 @ $0084)
+            RTS
             
-NOT_FORWARD   CMPA #REV ;Else if it's the REVERSE state
-              BNE NOT_REV
-              JSR REV_ST ; then call the REVERSE routine
-              JMP DISP_EXIT ; and exit
-            
-NOT_REV      CMPA #LT_TRN ;Else if it's the LT_TRN state
-             BNE NOT_LT_TRN
-             JSR LT_TRN_ST ; then call the LT_TRN routine
-             JMP DISP_EXIT ; and exit
-            
-NOT_LT_TRN  CMPA #RT_TRN ;Else if it's the RT_TRN state
-            BNE NOT_RT_TRN
-            JSR RT_TRN_ST ; then call the RT_TRN routine
-            JMP DISP_EXIT ; and exit
-            
-NOT_RT_TRN  CMPA #REV_TRN  ;Else if it's the REV_TRN state
-            BNE NOT_REV_TRN
-            JSR REV_TRN_ST ; then call the REVERSE TURN routine
-            JMP DISP_EXIT ; and exit
-	    
-NOT_REV_TRN  CMPA #BK_TRK  
-             BNE NOT_BK_TRK 
-             JMP BK_TRK_ST
-	     JMP DISP_EXIT ; and exit	    
-                
-NOT_BK_TRK   CMPA #ALL_STP
-	     BNE NOT_ALL_STP
-	     JSR ALL_STP_ST
-	     JMP DISP_EXIT1
-	     JMP DISP_EXIT ; and exit
-	     
-NOT_ALL_STP  CMPA #SBY                     
-             BNE NOT_SBY  
-             JSR SBY_ST   
-             JMP DISP_EXITl ; and exit               
+; Clear LCD Buffer
 
-NOT_SBY     NOP       
-DISP_EXIT   RTS ; Exit from the state dispatcher ----------
+CLR_LCD_BUF LDX #CLEAR_LINE
+            LDY #TOP_LINE
+            JSR STRCPY
+CLB_SECOND  LDX #CLEAR_LINE
+            LDY #BOT_LINE
+            JSR STRCPY
+CLB_EXIT    RTS
 
-;*******************************************************************
+; String Copy
 
-START_ST    BRCLR PORTAD0, $04, NO_FWD ;If FWD_BUMP
-            JSR INIT_FWD ; initialize the FWD state
-            MOVB #FWD, CRNT_STATE  ; Go into the FWD state
-            
-NO_FWD      NOP ; Else
-START_EXIT  RTS ; return to the MAIN routine
+STRCPY      PSHX            ; Protect the registers used
+            PSHY
+            PSHA
+STRCPY_LOOP LDAA 0,X        ; Get a source character
+            STAA 0,Y        ; Copy it to the destination
+            BEQ STRCPY_EXIT ; If it was the null, then exit
+            INX             ; Else increment the pointers
+            INY
+            BRA STRCPY_LOOP ; and do it again
+STRCPY_EXIT PULA            ; Restore the registers
+            PULY
+            PULX
+            RTS             
 
-;*******************************************************************
-
-FWD_ST      BRSET PORTAD0, $04, NO_FWD_BUMP ; if FWD_BUMP then
-            JSR INIT_REV   ; initialize the REVRSE routine
-            MOVB #REV, CRNT_STATE  ;set the state to REVERSE
-            JMP FWD_EXIT  ; return
-            
-NO_FWD_BUMP BRSET PORTAD0,$08,NO_REV_BUMP ; If REAR_BUMP, then we should stop
-            JSR INIT_REV_BUMP ; so initialize the ALL_STOP state
-            MOVB #REV_ST, CRNT_STATE ; and change state to ALL_STOP
-            JMP FWD_EXIT ; and return
-            
-NO_REV_BUMP  LDAA TOF_COUNTER ; If Tc>Tfwd then
-             CMPA T_FWD ; the robot should make a turn
-             BNE NO_LT_TRN ; so
-             JSR INIT_LT_TRN ; initialize the FORWARD_TURN state
-             MOVB #LT_TRN,CRNT_STATE ; and go to that state
-             JMP FWD_EXIT
-             
-LT_TURN       LDAA  NEXT_D   ; Push direction for the previous
-              PSHA      ; Intersection to the stack pointer
-              LDAA  SEC_PTH_INT ; Then store direction taken to NEXT_D
-              STAA  NEXT_D 
-              JSR   INIT_LT_TRN  ; The robot should make a LEFT turn
-              MOVB  #LT_TRN,CRNT_STATE ; Initialize the LT_TRN state             
-
-RT_TURN       LDAA  NEXT_D   ; Push direction for the previous
-              PSHA      ; Intersection to the stack pointer
-              LDAA  SEC_PTH_INT ; Then store direction taken to NEXT_D
-              STAA  NEXT_D 
-              JSR   INIT_RT_TRN  ; The robot should make a RIGHT turn
-              MOVB  #RT_TRN,CRNT_STATE ; Initialize the RT_TRN state
-	      
-	      
-FWD_EXIT    RTS ; return to the MAIN routine
-
-;*******************************************************************
-
-REV_ST      LDAA TOF_COUNTER ; If Tc>Trev then
-            CMPA T_REV ; the robot should make a FWD turn
-            BNE NO_REV_TRN ; so
-            JSR INIT_REV_TRN ; initialize the REV_TRN state
-            MOVB #REV_TRN,CRNT_STATE ; set state to REV_TRN
-            BRA REV_EXIT ; and return
-NO_REV_TRN  NOP ; Else
-REV_EXIT    RTS ; return to the MAIN routine
-
-;*******************************************************************
-
-INIT_FWD      BCLR PORTA,%00000011 ; Set FWD direction for both motors
-              BSET PTT,%00110000 ; Turn on the drive motors
-              LDAA TOF_COUNTER ; Mark the fwd time Tfwd
-              ADDA #FWD_INT
-              STAA T_FWD
-              RTS
-
-;*******************************************************************
-
-INIT_REV      BSET PORTA,%00000011 ; Set REV direction for both motors
-              BSET PTT,%00110000 ; Turn on the drive motors
-              LDAA TOF_COUNTER ; Mark the fwd time Tfwd
-              ADDA #REV_INT
-              STAA T_REV
-              RTS
-
-;*******************************************************************
-
-INIT_SBY     BCLR  PTT,%00110000  ; Turn off the drive motors
-             RTS
 ; Guider LEDs ON
 
 G_LEDS_ON   BSET PORTA,%00100000 ; Set bit 5
@@ -717,12 +760,12 @@ UPDT_DISPL  MOVB #$90,ATDCTL5 ; R-just., uns., sing. conv., mult., ch=0, start
             RTS
 	    
 ISR_A	   MOVB #$01, TFLG1 ; initialize input capture for interrupt
-	   INC ISR_CNT1 ; increment the first counter
-	   RTI ; return to normal program execution
+	       INC ISR_CNT1 ; increment the first counter
+	       RTI ; return to normal program execution
 
 ISR_B	   MOVB #$02, TFLG1 ; initialize input capture for interrupt
-	   INC ISR_CNT2  increment the second counter
-	   RTI ; return to normal program execution
+	       INC ISR_CNT2  ; increment the second counter
+	       RTI ; return to normal program execution
 	   
 ;*******************************************************************
 ;* Interrupt Vectors *
