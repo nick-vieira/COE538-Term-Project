@@ -747,9 +747,9 @@ TOF_ISR     INC TOF_COUNTER
             STAA TFLG2 ; TOF
             RTI
             
-;*******************************************************************
-;* Update Display (Battery Voltage + Current State) *
-;*******************************************************************
+;*******************************************************************;
+;        Update Display (Battery Voltage + Current State) 	    ;
+;*******************************************************************;
 
 UPDT_DISPL  MOVB #$90,ATDCTL5 ; R-just., uns., sing. conv., mult., ch=0, start
             BRCLR ATDSTAT0,$80,* ; Wait until the conver. seq. is complete
