@@ -518,7 +518,7 @@ BIN2ASC         PSHA ; Save a copy of the input number on the stack
                 RTS
                 
 ;***************************************************************************;
-;			   utility sub					    ;
+;			   utility subroutine				    ;
 ;***************************************************************************;
 ; Initialize the LCD
 
