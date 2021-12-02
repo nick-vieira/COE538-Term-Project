@@ -53,7 +53,7 @@ BK_TRK	    EQU 6
 ALL_STP     EQU 7
 
 ; variable section
-            ORG $3000 ; Where our TOF counter register lives
+            ORG $3800 ; Where our TOF counter register lives
 	    
 IRS_CNT1    DC.W 0 ; initialize first interrupt routine at address $0000
 IRS_CNT2    DC.W 0 ; initialize second interrupt routine at address $0000
@@ -107,31 +107,24 @@ ATDCTL5      RMB 4
 Entry:
 _Startup:
 
-            LDS $4000 ;Stack pointer initialization
-            CLI
-            JSR initPORTS  ;
-            JSR initAD   ;AD converter
-            JSR initLCD ;LCD initlization
-            JSR clrLCD  ;Clear LCD and home cursor
-            JSR initTCNT  ;Timer overflow counter initialization
-            CLI   ;Enable interrupts
+            LDS $4000 ; Stack pointer initialization
+            CLI	; Enable interrupts
+            JSR initPORTS 
+            JSR openADC ; ATD initialization
+            JSR initLCD ; LCD initlization
+            JSR clrLCD  ; Clear LCD and home cursor
+            JSR initTCNT  ; Timer overflow counter initialization
             
-            LDX #msg1 ;Display msg1
+            BSET DDRA,%00000011  ; STAR_DIR, PORT_DIR                        
+            BSET DDRT,%00110000  ; STAR_SPEED, PORT_SPEED                                                                                   
+            JSR initAD   ; Initialize ATD converter
+	      
+            LDX #msg1 ; Display msg1
             JSR putsLCD
-            
-            LDAA #$8A   ;Move LCD cursor to end of msg1
+          
+            LDAA #$C0   ;Move LCD cursor to end of msg1
             JSR cmd2LCD
             LDX #msg2   ;Display msg2
-            JSR putsLCD
-            
-            LDAA #$C0   ;Move LCD cursor to end of msg2
-            JSR cmd2LCD
-            LDX #msg3   ;Display msg3
-            JSR putsLCD
-            
-            LDAA #$C7   ;Move LCD cursor to end of msg3
-            JSR cmd2LCD
-            LDX #msg4   ;Display msg4
             JSR putsLCD
             
             JSR ENABLE_TOF  ; jump to TOF initialization
@@ -139,21 +132,21 @@ _Startup:
 MAIN        JSR G_LEDS_ON   ; Enable guider LEDs
             JSR READ_SENSORS  ; Read guider snesors
             JSR G_LEDS_OFF  ; Disable guider LEDs
-            LDY #2000   ; set 300 ms delay for eebot to avoid
+            LDY #2000   ; set 300 ms delay for eebot initialization
             JSR del_50us   ; jump to delay routine         
      
 ;data section
 
-msg1        dc.b "State ",0
-msg2        dc.b "Readings ",0
-msg3:       dc.b "Battery Voltage ",0
-msg4        dc.b "Bumper status ",0
+msg1        dc.b "Battery Voltage ",0
+msg2        dc.b "State ",0
 tab         dc.b "START ",0
             dc.b "FWD ",0
             dc.b "REV ",0
             dc.b "ALL_STP",0
             dc.b "FWD_TRN",0
             dc.b "REV_TRN",0
+	    dc.b "LT_TRN", 0
+	    dc.b "RT_TR", 0
 
 ;subroutine section
 
@@ -212,7 +205,6 @@ START_ST    BRCLR PORTAD0, $04, NO_FWD ;If FWD_BUMP
             JSR INIT_FWD ; initialize the FWD state
             MOVB #FWD, CRNT_STATE  ; Go into the FWD state
             
-NO_FWD      NOP ; Else
 START_EXIT  RTS ; return to the MAIN routine
 
 ;*******************************************************************
@@ -227,13 +219,39 @@ NO_FWD_BUMP BRSET PORTAD0,$08,NO_REV_BUMP ; If REAR_BUMP, then we should stop
             MOVB #ALL_STP_ST, CRNT_STATE ; and change state to ALL_STOP
             JMP FWD_EXIT ; and return
             
-NO_REV_BUMP  LDAA TOF_COUNTER ; If Tc>Tfwd then
-             CMPA T_FWD ; the robot should make a turn
-             BNE NO_LT_TRN ; so
-             JSR INIT_LT_TRN ; initialize the FORWARD_TURN state
-             MOVB #LT_TRN,CRNT_STATE ; and go to that state
-             JMP FWD_EXIT
+NO_REV_BUMP  LDAA SENSOR_BOW
+	     ADDA VAR_BOW
+	     CMPA BASE_BOW
+	     BPL NO_ALIGN
+	     
+	     LDAA SENSOR_MID
+	     ADDA VAR_MID
+	     CMPA BASE_MID
+	     BPL NO_ALIGN
              
+	     LDAA SENSOR_LINE
+	     ADDA VAR_LINE
+	     CMPA BASE_LINE
+	     BMI GO_RIGHT_ALIGN
+	     
+NO_ALIGN     LDAA SENSOR_PORT
+	     ADDA VAR_PORT
+	     CMPA BASE_PORT
+	     BPL PART_LEFT_TURN
+	     BMI NO_PART_DET
+	     
+NO_PORT_DET  LDAA SENSOR_BOW
+	     ADDA VAR_BOW
+	     CMPA BASE_BOW
+	     BPL EXIT
+	     BMI NO_BOW_DET
+	     
+NO_BOW_DET   LDAA SENSOR_STBD
+	     ADDA VAR_STBD
+	     CMPA BASE_STBD
+	     BPL EXIT
+	     BMI NO_BOW_DET
+	     
 LT_TURN       LDAA  NEXT_D   ; Push direction for the previous
               PSHA      ; Intersection to the stack pointer
               LDAA  SEC_PTH_INT ; Then store direction taken to NEXT_D
@@ -249,7 +267,6 @@ RT_TURN       LDAA  NEXT_D   ; Push direction for the previous
               JSR   INIT_RT_TRN  ; The robot should make a RIGHT turn
               MOVB  #RT_TRN,CRNT_STATE ; Initialize the RT_TRN state
               JMP FWD_EXIT
-	      
 	      
 FWD_EXIT    RTS ; return to the MAIN routine
 
