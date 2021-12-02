@@ -112,7 +112,7 @@ _Startup:
             JSR initPORTS 
             JSR openADC ; ATD initialization
             JSR initLCD ; LCD initlization
-            JSR CLR_LCD_BUF  ; Clear LCD and home cursor
+            JSR clrLCD  ; Clear LCD and home cursor
             JSR initTCNT  ; Timer overflow counter initialization
             
             BSET DDRA,%00000011  ; STAR_DIR, PORT_DIR                        
@@ -148,7 +148,9 @@ tab         dc.b "START ",0
 	    dc.b "LT_TRN", 0
 	    dc.b "RT_TRN", 0
 
-;subroutine section
+;***************************************************************************;
+;			Subroutine Section				    ;
+;***************************************************************************;
 
 DISPATCHER  CMPA #START ; If it’s the START state 
             BNE NOT_START 
@@ -261,7 +263,7 @@ LT_TURN       LDAA  NEXT_D   ; Push direction for the previous
               JMP FWD_EXIT             
 
 RT_TURN       LDAA  NEXT_D   ; Push direction for the previous
-              PSHA   ; Intersection to the stack pointer
+              PSHA      ; Intersection to the stack pointer
               LDAA  SEC_PTH_INT ; Then store direction taken to NEXT_D
               STAA  NEXT_D 
               JSR   INIT_RT_TRN  ; The robot should make a RIGHT turn
@@ -270,7 +272,7 @@ RT_TURN       LDAA  NEXT_D   ; Push direction for the previous
 	      
 FWD_EXIT    RTS ; return to the MAIN routine
 
-;******************************************************************
+;*******************************************************************
 
 REV_ST      LDAA TOF_COUNTER ; If Tc>Trev then
             CMPA T_REV ; the robot should make a FWD turn
@@ -281,7 +283,7 @@ REV_ST      LDAA TOF_COUNTER ; If Tc>Trev then
 NO_REV_TRN  NOP ; Else
 REV_EXIT    RTS ; return to the MAIN routine
 
-;******************************************************************
+;*******************************************************************
 
 INIT_FWD      BCLR PORTA,%00000011 ; Set FWD direction for both motors
               BSET PTT,%00110000 ; Turn on the drive motors
@@ -290,7 +292,7 @@ INIT_FWD      BCLR PORTA,%00000011 ; Set FWD direction for both motors
               STAA T_FWD
               RTS
 
-;******************************************************************
+;*******************************************************************
 
 INIT_REV      BSET PORTA,%00000011 ; Set REV direction for both motors
               BSET PTT,%00110000 ; Turn on the drive motors
@@ -301,30 +303,12 @@ INIT_REV      BSET PORTA,%00000011 ; Set REV direction for both motors
               
 ;*******************************************************************
 
-INIT_RIGHT    BSET PORTA,%00000010   ; Set REV dir. for right motor
-              BCLR PORTA,%00000001   ; Set FWD dir. for left motor
-              LDAA TOF_COUNTER    ; Mark the fwd_turn time Tfwdturn
-              ADDA #T_RIGHT
-              STAA T_TURN
-              RTS
-
-;*******************************************************************
-                  
-INIT_LEFT     BSET  PORTA,%00000001   ; Set left motor to reverse
-              BCLR  PORTA,%00000010   ; Set right motor to fwd
-              LDAA  TOF_COUNTER   ; Mark the current TOF time
-              ADDA  #T_LEFT      ; Add left turn time to that
-              STAA  T_TURN     ; store in T_TURN to read later on
-              RTS
-
-;********************************************************************
-
-INIT_ALL_STP   BCLR PTT,%00110000  ; Turn off the drive motors
-               RTS
+INIT_ALL_STP    BCLR  PTT,%00110000  ; Turn off the drive motors
+                RTS
                                                      
-;*******************************************************************
-
-;Motor control
+;***************************************************************************;
+;			   Motor control				    ;
+;***************************************************************************;
 
             BSET DDRA,%00000011
             BSET DDRT,%00110000
@@ -378,7 +362,9 @@ PORTREV     LDAA PORTA
             STAA PTH
             RTS
 
-; Initialize the ADC
+;***************************************************************************;
+;			  Initialize the ADC				    ;
+;***************************************************************************;
 
 openADC     MOVB #$80,ATDCTL2 ; Turn on ADC (ATDCTL2 @ $0082)
             LDY #1            ; Wait for 50 us for ADC to be ready
@@ -422,8 +408,10 @@ G_LEDS_ON   BSET PORTA,%00100000 ; Set bit 5
 
 G_LEDS_OFF  BCLR PORTA,%00100000 ; Clear bit 5
             RTS
-            
-;Read Sensors
+ 
+;***************************************************************************;
+;			  Read Sensors					    ;
+;***************************************************************************;
 
 READ_SENSORS  CLR SENSOR_NUM       ; Select sensor number 0
               LDX #SENSOR_LINE     ; Point at the start of the sensor array
@@ -445,7 +433,9 @@ RS_MAIN_LOOP  LDAA SENSOR_NUM      ; Select the correct sensor input
               
 RS_EXIT       RTS   
 
-;Select Sensors
+;***************************************************************************;
+;			  Select Sensors				    ;
+;***************************************************************************;
 
 SELECT_SENSOR PSHA            ; Save the sensor number for the moment
               LDAA PORTA      ; Clear the sensor selection bits to zeros
@@ -458,15 +448,16 @@ SELECT_SENSOR PSHA            ; Save the sensor number for the moment
               ORAA TEMP       ; OR it into the sensor bit positions
               STAA PORTA      ; Update the hardware
               RTS         
-            
-;Display Sensor Readings
+ 
+;***************************************************************************;
+;			  Display Sensors Readings			    ;
+;***************************************************************************;
 
 DP_FRONT_SENSOR EQU TOP_LINE+3
 DP_PORT_SENSOR  EQU BOT_LINE+0
 DP_MID_SENSOR   EQU BOT_LINE+3
 DP_STBD_SENSOR  EQU BOT_LINE+6
 DP_LINE_SENSOR  EQU BOT_LINE+9
-
 DISPLAY_SENSORS LDAA SENSOR_BOW      ; Get the FRONT sensor value
 
                 JSR BIN2ASC          ; Convert to ascii string in D
@@ -500,7 +491,9 @@ DISPLAY_SENSORS LDAA SENSOR_BOW      ; Get the FRONT sensor value
                 JSR putsLCD
                 RTS
 
-;Binary to ASCII
+;***************************************************************************;
+;			 Binary to ASCII				    ;
+;***************************************************************************;
                 
 HEX_TABLE       FCC '0123456789ABCDEF' ; Table for converting values
 
@@ -525,9 +518,9 @@ BIN2ASC         PSHA ; Save a copy of the input number on the stack
                 PULB ; Retrieve the LSnibble character into ACCB
                 RTS
                 
-; utility subroutines
-
-;*****************************************************************
+;***************************************************************************;
+;			   utility sub					    ;
+;***************************************************************************;
 ; Initialize the LCD
 
 openLCD         LDY #2000 ; Wait 100 ms for LCD to be ready
@@ -784,7 +777,7 @@ UPDT_DISPL  MOVB #$90,ATDCTL5 ; R-just., uns., sing. conv., mult., ch=0, start
             LDAA HUNDREDS
             JSR putcLCD ; Display the battery voltage
             
-            LDAA #$C7 ; Move LCD cursor to the 2nd row, end of msg2
+            LDAA #$C6 ; Move LCD cursor to the 2nd row, end of msg2
             JSR cmd2LCD ;
             LDAB CRNT_STATE ; Display current state
             LSLB ; "
