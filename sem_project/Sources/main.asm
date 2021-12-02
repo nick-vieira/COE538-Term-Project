@@ -796,9 +796,9 @@ ISR_B	   MOVB #$02, TFLG1 ; initialize input capture for interrupt
 	       INC ISR_CNT2  ; increment the second counter
 	       RTI ; return to normal program execution
 	   
-;*******************************************************************
-;* Interrupt Vectors *
-;*******************************************************************
+;*******************************************************************;
+; 			Interrupt Vectors 			    ;
+;*******************************************************************;
             ORG $FFFE
             DC.W Entry ; Reset Vector
             
