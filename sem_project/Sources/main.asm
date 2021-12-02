@@ -146,7 +146,7 @@ tab         dc.b "START ",0
             dc.b "FWD_TRN",0
             dc.b "REV_TRN",0
 	    dc.b "LT_TRN", 0
-	    dc.b "RT_TR", 0
+	    dc.b "RT_TRN", 0
 
 ;subroutine section
 
