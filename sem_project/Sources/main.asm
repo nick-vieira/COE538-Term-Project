@@ -75,7 +75,6 @@ CLEAR_LINE FCC ' '
            FCB NULL ; terminated by null
 TEMP       RMB 1 ; Temporary location
 
-; variable section
 
 TOF_COUNTER dc.b 0 ; The timer, incremented at 23Hz
 CRNT_STATE  dc.b 3 ; Current state register
