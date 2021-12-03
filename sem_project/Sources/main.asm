@@ -45,8 +45,7 @@ REV         EQU 2
 LT_TRN      EQU 3
 RT_TRN	    EQU	4
 REV_TRN     EQU 5
-BK_TRK	    EQU 6
-ALL_STP     EQU 7
+ALL_STP     EQU 6
 
 ; Turning Timers
 ;---------------
@@ -125,11 +124,12 @@ _Startup:
             JSR INIT_SENSORS ; initialize sensors through the ports 
             JSR openADC ; ATD initialization
             JSR initLCD ; LCD initlization
-            JSR CLR_LCD_BUF  ; Clear LCD and home cursor
+            JSR CLR_LCD_BUF  ; Clear the LCD buffer
             
             BSET DDRA,%00000011  ; STAR_DIR, PORT_DIR                        
             BSET DDRT,%00110000  ; STAR_SPEED, PORT_SPEED                                                                                   
             JSR initAD   ; Initialize ATD converter
+	    JSR clrLCD   ; Clear LCD and home cursor
 	      
             LDX #msg1 ; Display msg1
             JSR putsLCD
@@ -200,23 +200,13 @@ NOT_RT_TRN  CMPA #REV_TRN  ;Else if it's the REV_TRN state
             JSR REV_TRN_ST ; then call the REVERSE TURN routine
             JMP DISP_EXIT ; and exit
 	    
-NOT_REV_TRN  CMPA #BK_TRK  
-             BNE NOT_BK_TRK 
-             JMP BK_TRK_ST
-	           JMP DISP_EXIT ; and exit	    
-                
-NOT_BK_TRK   CMPA #ALL_STP
+NOT_REV_TRN  CMPA #ALL_STP
 	           BNE NOT_ALL_STP
 	           JSR ALL_STP_ST
 	           JMP DISP_EXIT1
 	           JMP DISP_EXIT ; and exit
 	     
-NOT_ALL_STP  CMPA #SBY                     
-             BNE NOT_SBY  
-             JSR SBY_ST   
-             JMP DISP_EXITl ; and exit               
-
-NOT_SBY     NOP       
+NOT_ALL_STP  NOP       
 DISP_EXIT   RTS ; Exit from the state dispatcher ----------
 
 ;*******************************************************************
@@ -230,11 +220,11 @@ START_EXIT  RTS ; return to the MAIN routine
 ;*******************************************************************
 
 FWD_ST      BRSET PORTAD0, $04, NO_FWD_BUMP ; if FWD_BUMP then
-            JSR INIT_REV   ; initialize the REVRSE routine
-            MOVB #REV, CRNT_STATE  ;set the state to REVERSE
+            JSR INIT_REV_TRN   ; initialize the REVERSE_TRN routine
+            MOVB #REV_TRN, CRNT_STATE  ;set the state to REVERSE_TRN
             JMP FWD_EXIT  ; return
             
-NO_FWD_BUMP BRSET PORTAD0,$08,NO_REV_BUMP ; If REAR_BUMP, then we should stop
+NO_FWD_BUMP BRSET PORTAD0, $08, NO_REV_BUMP ; If REAR_BUMP, then we should stop
             JSR INIT_ALL_STP ; so initialize the ALL_STOP state
             MOVB #ALL_STP_ST, CRNT_STATE ; and change state to ALL_STOP
             JMP FWD_EXIT ; and return
@@ -322,15 +312,8 @@ RIGHT_TRN   LDAA SENSOR_BOW
 	    
 RIGHT_EXIT  MOVB #FWD_ST, CRNT_STATE
 	    JSR INIT_FWD
-	    BRA EXIT	    
-
-INIT_FWD    BCLR PORTA,%00000011 ; Set FWD direction for both motors
-            BSET PTT,%00110000 ; Turn on the drive motors
-            LDAA TOF_COUNTER ; Mark the fwd time Tfwd
-            ADDA #FWD_INT
-            STAA T_FWD
-            RTS
-
+	    BRA EXIT	   
+	    
 ;******************************************************************
 
 REV_TRN_ST  LDAA SENSOR_BOW
@@ -352,6 +335,15 @@ ALL_STP_ST BRSET PORTAD0, %04, NOT_START
 NOT_START  RTS
 
 ;******************************************************************
+
+INIT_FWD    BCLR PORTA,%00000011 ; Set FWD direction for both motors
+            BSET PTT,%00110000 ; Turn on the drive motors
+            LDAA TOF_COUNTER ; Mark the fwd time Tfwd
+            ADDA #FWD_INT
+            STAA T_FWD
+            RTS
+	    
+;*******************************************************************
 
 INIT_REV      BSET PORTA,%00000011 ; Set REV direction for both motors
               BSET PTT,%00110000 ; Turn on the drive motors
@@ -383,6 +375,14 @@ INIT_LT_TRN   BSET  PORTA,%00000001   ; Set left motor to reverse
 INIT_ALL_STP   BCLR PTT,%00110000  ; Turn off the drive motors
                RTS
                                                      
+;*******************************************************************
+
+INIT_REV_TRN  BCLR PORTA,%00000010 ; Set FWD dir. for STARBOARD (right) motor
+              LDAA TOF_COUNTER ; Mark the fwd time Tfwd
+              ADDA #REV_TRN_INT
+              STAA T_REV_TRN
+              RTS
+	      
 ;*******************************************************************
 
 INIT_SENSORS   BCLR DDRAD $FF ; Clear PortAD to an input
