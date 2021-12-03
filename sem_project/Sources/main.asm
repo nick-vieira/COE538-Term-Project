@@ -1,11 +1,7 @@
 ;*****************************************************************
-;* This stationery serves as the framework for a                 *
-;* user application (single file, absolute assembly application) *
-;* For a more comprehensive program that                         *
-;* demonstrates the more advanced functionality of this          *
-;* processor, please see the demonstration applications          *
-;* located in the examples subdirectory of the                   *
-;* Freescale CodeWarrior for the HC12 Program directory          *
+; Nicholas Vieira, Section 9, 500977730     			 *
+; Jasdeep Gahunia, Section 7, 500965510				 *
+: Jasmeet Gill, Section 11, 500967398				 *
 ;*****************************************************************
 
 ; export symbols
@@ -52,6 +48,11 @@ REV_TRN     EQU 5
 BK_TRK	    EQU 6
 ALL_STP     EQU 7
 
+; Turning Timers
+;---------------
+T_LEFT    EQU  7
+T_RIGHT   EQU  7
+
 ; variable section
             ORG $3800 ; Where our TOF counter register lives
 	    
@@ -66,6 +67,18 @@ SENSOR_PORT FCB $45
 SENSOR_MID  FCB $67
 SENSOR_STBD FCB $89
 SENSOR_NUM  RMB 1   ; The currently selected sensor
+
+BASE_LINE     FCB   $9D
+BASE_BOW      FCB   $CA
+BASE_MID      FCB   $CA
+BASE_PORT     FCB   $CA
+BASE_STBD     FCB   $CA
+                                            
+VAR_LINE      FCB   $18 
+VAR_BOW       FCB   $30     ; Robot should correctly adjust itself if it needs to perform   
+VAR_PORT      FCB   $20     ; a turn, a forward sequence, reverse turn or 180 degree turn
+VAR_MID       FCB   $20
+VAR_STBD      FCB   $15
             
 TOP_LINE   RMB 20 ; Top line of display
            FCB NULL ; terminated by null
@@ -75,6 +88,7 @@ CLEAR_LINE FCC ' '
            FCB NULL ; terminated by null
 TEMP       RMB 1 ; Temporary location
 
+; variable section
 
 TOF_COUNTER dc.b 0 ; The timer, incremented at 23Hz
 CRNT_STATE  dc.b 3 ; Current state register
@@ -108,11 +122,10 @@ _Startup:
 
             LDS $4000 ; Stack pointer initialization
             CLI	; Enable interrupts
-            JSR initPORTS 
+            JSR INIT_SENSORS ; initialize sensors through the ports 
             JSR openADC ; ATD initialization
             JSR initLCD ; LCD initlization
-            JSR clrLCD  ; Clear LCD and home cursor
-            JSR initTCNT  ; Timer overflow counter initialization
+            JSR CLR_LCD_BUF  ; Clear LCD and home cursor
             
             BSET DDRA,%00000011  ; STAR_DIR, PORT_DIR                        
             BSET DDRT,%00110000  ; STAR_SPEED, PORT_SPEED                                                                                   
@@ -132,7 +145,15 @@ MAIN        JSR G_LEDS_ON   ; Enable guider LEDs
             JSR READ_SENSORS  ; Read guider snesors
             JSR G_LEDS_OFF  ; Disable guider LEDs
             LDY #2000   ; set 300 ms delay for eebot initialization
-            JSR del_50us   ; jump to delay routine         
+            JSR del_50us   ; jump to delay routine
+	    
+	    JSR DISPLAY_SENSORS
+	    BRA MAIN
+	    
+	    JSR UPDT_DISPL
+	    LDAA CRNT_STATE
+	    JSR DISPATCHER
+	    BRA MAIN
      
 ;data section
 
@@ -147,9 +168,7 @@ tab         dc.b "START ",0
 	    dc.b "LT_TRN", 0
 	    dc.b "RT_TRN", 0
 
-;***************************************************************************;
-;			Subroutine Section				    ;
-;***************************************************************************;
+;subroutine section
 
 DISPATCHER  CMPA #START ; If it’s the START state 
             BNE NOT_START 
@@ -262,7 +281,7 @@ LT_TURN       LDAA  NEXT_D   ; Push direction for the previous
               JMP FWD_EXIT             
 
 RT_TURN       LDAA  NEXT_D   ; Push direction for the previous
-              PSHA      ; Intersection to the stack pointer
+              PSHA   ; Intersection to the stack pointer
               LDAA  SEC_PTH_INT ; Then store direction taken to NEXT_D
               STAA  NEXT_D 
               JSR   INIT_RT_TRN  ; The robot should make a RIGHT turn
@@ -271,7 +290,7 @@ RT_TURN       LDAA  NEXT_D   ; Push direction for the previous
 	      
 FWD_EXIT    RTS ; return to the MAIN routine
 
-;*******************************************************************
+;******************************************************************
 
 REV_ST      LDAA TOF_COUNTER ; If Tc>Trev then
             CMPA T_REV ; the robot should make a FWD turn
@@ -279,19 +298,60 @@ REV_ST      LDAA TOF_COUNTER ; If Tc>Trev then
             JSR INIT_REV_TRN ; initialize the REV_TRN state
             MOVB #REV_TRN,CRNT_STATE ; set state to REV_TRN
             BRA REV_EXIT ; and return
+	    
 NO_REV_TRN  NOP ; Else
 REV_EXIT    RTS ; return to the MAIN routine
 
-;*******************************************************************
+;******************************************************************
 
-INIT_FWD      BCLR PORTA,%00000011 ; Set FWD direction for both motors
-              BSET PTT,%00110000 ; Turn on the drive motors
-              LDAA TOF_COUNTER ; Mark the fwd time Tfwd
-              ADDA #FWD_INT
-              STAA T_FWD
-              RTS
+LEFT_TRN    LDAA SENSOR_BOW
+	    ADDA VAR_BOW
+	    CMPA BASE_BOW
+	    BPL LEFT_EXIT
+	    BMI EXIT
+	    
+LEFT_EXIT  MOVB #FWD_ST, CRNT_STATE
+	   JSR INIT_FWD
+	   BRA EXIT
+	   
+RIGHT_TRN   LDAA SENSOR_BOW
+	    ADDA VAR_BOW
+	    CMPA BASE_BOW
+	    BPL RIGHT_EXIT
+	    BMI EXIT
+	    
+RIGHT_EXIT  MOVB #FWD_ST, CRNT_STATE
+	    JSR INIT_FWD
+	    BRA EXIT	    
 
-;*******************************************************************
+INIT_FWD    BCLR PORTA,%00000011 ; Set FWD direction for both motors
+            BSET PTT,%00110000 ; Turn on the drive motors
+            LDAA TOF_COUNTER ; Mark the fwd time Tfwd
+            ADDA #FWD_INT
+            STAA T_FWD
+            RTS
+
+;******************************************************************
+
+REV_TRN_ST  LDAA SENSOR_BOW
+	    ADDA VAR_BOW
+	    CMPA BASE_BOW
+	    BPL LEFT_EXIT
+	    BMI EXIT
+	    
+	    JSR INIT_LEFT
+	    MOVB #FWD_ST, CRNT_STATE
+	    JSR INIT_FWD
+	    BRA EXIT
+
+;******************************************************************
+
+ALL_STP_ST BRSET PORTAD0, %04, NOT_START
+	   MOVB #START_ST, CRNT_STATE
+	   
+NOT_START  RTS
+
+;******************************************************************
 
 INIT_REV      BSET PORTA,%00000011 ; Set REV direction for both motors
               BSET PTT,%00110000 ; Turn on the drive motors
@@ -302,12 +362,38 @@ INIT_REV      BSET PORTA,%00000011 ; Set REV direction for both motors
               
 ;*******************************************************************
 
-INIT_ALL_STP    BCLR  PTT,%00110000  ; Turn off the drive motors
-                RTS
+INIT_RT_TRN   BSET PORTA,%00000010   ; Set REV dir. for right motor
+              BCLR PORTA,%00000001   ; Set FWD dir. for left motor
+              LDAA TOF_COUNTER    ; Mark the fwd_turn time Tfwdturn
+              ADDA #T_RIGHT
+              STAA T_TURN
+              RTS
+
+;*******************************************************************
+                  
+INIT_LT_TRN   BSET  PORTA,%00000001   ; Set left motor to reverse
+              BCLR  PORTA,%00000010   ; Set right motor to fwd
+              LDAA  TOF_COUNTER   ; Mark the current TOF time
+              ADDA  #T_LEFT      ; Add left turn time to that
+              STAA  T_TURN     ; store in T_TURN to read later on
+              RTS
+
+;********************************************************************
+
+INIT_ALL_STP   BCLR PTT,%00110000  ; Turn off the drive motors
+               RTS
                                                      
-;***************************************************************************;
-;			   Motor control				    ;
-;***************************************************************************;
+;*******************************************************************
+
+INIT_SENSORS   BCLR DDRAD $FF ; Clear PortAD to an input
+	       BSET DDRA,$FF ; Set PORTA
+               BSET DDRB,$FF ; Set PORTB
+               BSET DDRJ,$C0 ; Set PORTJ
+               RTS
+	       
+;*******************************************************************	       
+
+;Motor control
 
             BSET DDRA,%00000011
             BSET DDRT,%00110000
@@ -361,9 +447,7 @@ PORTREV     LDAA PORTA
             STAA PTH
             RTS
 
-;***************************************************************************;
-;			  Initialize the ADC				    ;
-;***************************************************************************;
+; Initialize the ADC
 
 openADC     MOVB #$80,ATDCTL2 ; Turn on ADC (ATDCTL2 @ $0082)
             LDY #1            ; Wait for 50 us for ADC to be ready
@@ -407,10 +491,8 @@ G_LEDS_ON   BSET PORTA,%00100000 ; Set bit 5
 
 G_LEDS_OFF  BCLR PORTA,%00100000 ; Clear bit 5
             RTS
- 
-;***************************************************************************;
-;			  Read Sensors					    ;
-;***************************************************************************;
+            
+;Read Sensors
 
 READ_SENSORS  CLR SENSOR_NUM       ; Select sensor number 0
               LDX #SENSOR_LINE     ; Point at the start of the sensor array
@@ -432,9 +514,7 @@ RS_MAIN_LOOP  LDAA SENSOR_NUM      ; Select the correct sensor input
               
 RS_EXIT       RTS   
 
-;***************************************************************************;
-;			  Select Sensors				    ;
-;***************************************************************************;
+;Select Sensors
 
 SELECT_SENSOR PSHA            ; Save the sensor number for the moment
               LDAA PORTA      ; Clear the sensor selection bits to zeros
@@ -447,16 +527,15 @@ SELECT_SENSOR PSHA            ; Save the sensor number for the moment
               ORAA TEMP       ; OR it into the sensor bit positions
               STAA PORTA      ; Update the hardware
               RTS         
- 
-;***************************************************************************;
-;			  Display Sensors Readings			    ;
-;***************************************************************************;
+            
+;Display Sensor Readings
 
 DP_FRONT_SENSOR EQU TOP_LINE+3
 DP_PORT_SENSOR  EQU BOT_LINE+0
 DP_MID_SENSOR   EQU BOT_LINE+3
 DP_STBD_SENSOR  EQU BOT_LINE+6
 DP_LINE_SENSOR  EQU BOT_LINE+9
+
 DISPLAY_SENSORS LDAA SENSOR_BOW      ; Get the FRONT sensor value
 
                 JSR BIN2ASC          ; Convert to ascii string in D
@@ -490,9 +569,7 @@ DISPLAY_SENSORS LDAA SENSOR_BOW      ; Get the FRONT sensor value
                 JSR putsLCD
                 RTS
 
-;***************************************************************************;
-;			 Binary to ASCII				    ;
-;***************************************************************************;
+;Binary to ASCII
                 
 HEX_TABLE       FCC '0123456789ABCDEF' ; Table for converting values
 
@@ -517,9 +594,9 @@ BIN2ASC         PSHA ; Save a copy of the input number on the stack
                 PULB ; Retrieve the LSnibble character into ACCB
                 RTS
                 
-;***************************************************************************;
-;			   utility subroutine				    ;
-;***************************************************************************;
+; utility subroutines
+
+;*****************************************************************
 ; Initialize the LCD
 
 openLCD         LDY #2000 ; Wait 100 ms for LCD to be ready
@@ -559,13 +636,13 @@ clrLCD      LDAA #$01 ; clear cursor and return to home position
 
 ;*******************************************************************
 
-del_50us        PSHX ; (2 E-clk) Protect the X register
-eloop           LDX #300 ; (2 E-clk) Initialize the inner loop counter
-iloop           NOP ; (1 E-clk) No operation
-                DBNE X,iloop ; (3 E-clk) If the inner cntr not 0, loop again
-                DBNE Y,eloop ; (3 E-clk) If the outer cntr not 0, loop again
-                PULX ; (3 E-clk) Restore the X register
-                RTS ; (5 E-clk) Else return  
+del_50us      PSHX ; (2 E-clk) Protect the X register
+eloop         LDX #300 ; (2 E-clk) Initialize the inner loop counter
+iloop         NOP ; (1 E-clk) No operation
+              DBNE X,iloop ; (3 E-clk) If the inner cntr not 0, loop again
+              DBNE Y,eloop ; (3 E-clk) If the outer cntr not 0, loop again
+              PULX ; (3 E-clk) Restore the X register
+              RTS ; (5 E-clk) Else return  
 
 ;*******************************************************************
 
@@ -671,65 +748,65 @@ CON_EXIT    RTS ;We’re done the conversion
 BCD2ASC     LDAA  #0  ; Initialize the blanking flag
             STAA NO_BLANK
 
-  C_TTHOU:     LDAA TEN_THOUS ;Check the ’ten_thousands’ digit
-               ORAA NO_BLANK
-               BNE NOT_BLANK1
+C_TTHOU     LDAA TEN_THOUS ;Check the ’ten_thousands’ digit
+            ORAA NO_BLANK
+            BNE NOT_BLANK1
 
-  ISBLANK1:    LDAA #' '             ; It's blank
-               STAA TEN_THOUS ;so store a space
-               BRA  C_THOU ;and check the ’thousands’ digit
+ISBLANK1    LDAA #' '             ; It's blank
+            STAA TEN_THOUS ;so store a space
+            BRA  C_THOU ;and check the ’thousands’ digit
 
-  NOT_BLANK1:  LDAA TEN_THOUS ;Get the ’ten_thousands’ digit
-               ORAA #$30 ;Convert to ascii
-               STAA TEN_THOUS
-               LDAA #$1 ;Signal that we have seen a ’non-blank’ digit
-               STAA NO_BLANK
+NOT_BLANK1  LDAA TEN_THOUS ;Get the ’ten_thousands’ digit
+             ORAA #$30 ;Convert to ascii
+             STAA TEN_THOUS
+             LDAA #$1 ;Signal that we have seen a ’non-blank’ digit
+             STAA NO_BLANK
 
-  C_THOU:      LDAA THOUSANDS ;Check the thousands digit for blankness
-               ORAA NO_BLANK  ;If it’s blank and ’no-blank’ is still zero
-               BNE  NOT_BLANK2
+C_THOU      LDAA THOUSANDS ;Check the thousands digit for blankness
+             ORAA NO_BLANK  ;If it’s blank and ’no-blank’ is still zero
+             BNE  NOT_BLANK2
 
-  ISBLANK2:    LDAA  #' '  ; Thousands digit is blank
-               STAA THOUSANDS ;so store a space
-               BRA  C_HUNS ;and check the hundreds digit
+ISBLANK2:    LDAA  #' '  ; Thousands digit is blank
+             STAA THOUSANDS ;so store a space
+             BRA  C_HUNS ;and check the hundreds digit
 
-  NOT_BLANK2:  LDAA THOUSANDS ;(similar to ’ten_thousands’ case)
-               ORAA #$30
-               STAA THOUSANDS
-               LDAA #$1
-               STAA NO_BLANK
+NOT_BLANK2:  LDAA THOUSANDS ;(similar to ’ten_thousands’ case)
+             ORAA #$30
+             STAA THOUSANDS
+             LDAA #$1
+             STAA NO_BLANK
 
-  C_HUNS:      LDAA HUNDREDS ;Check the hundreds digit for blankness
-               ORAA NO_BLANK ;If it’s blank and ’no-blank’ is still zero
-               BNE NOT_BLANK3
+C_HUNS:      LDAA HUNDREDS ;Check the hundreds digit for blankness
+             ORAA NO_BLANK ;If it’s blank and ’no-blank’ is still zero
+             BNE NOT_BLANK3
 
-  ISBLANK3:    LDAA  #' '  ; Hundreds digit is blank
-               STAA HUNDREDS ;so store a space
-               BRA C_TENS ;and check the tens digit
+ISBLANK3:    LDAA  #' '  ; Hundreds digit is blank
+             STAA HUNDREDS ;so store a space
+             BRA C_TENS ;and check the tens digit
 
-  NOT_BLANK3:  LDAA HUNDREDS ;(similar to ’ten_thousands’ case)
-               ORAA #$30
-               STAA HUNDREDS
-               LDAA #$1
-               STAA NO_BLANK
+NOT_BLANK3:  LDAA HUNDREDS ;(similar to ’ten_thousands’ case)
+             ORAA #$30
+             STAA HUNDREDS
+             LDAA #$1
+             STAA NO_BLANK
 
-  C_TENS:      LDAA TENS ;Check the tens digit for blankness
-               ORAA NO_BLANK ;If it’s blank and ’no-blank’ is still zero
-               BNE NOT_BLANK4  ;
+C_TENS:      LDAA TENS ;Check the tens digit for blankness
+             ORAA NO_BLANK ;If it’s blank and ’no-blank’ is still zero
+             BNE NOT_BLANK4  ;
 
-  ISBLANK4:    LDAA  #' '  ; Tens digit is blank
-               STAA TENS ;so store a space
-               BRA C_UNITS ;and check the units digit
+ISBLANK4:    LDAA  #' '  ; Tens digit is blank
+             STAA TENS ;so store a space
+             BRA C_UNITS ;and check the units digit
+	       
+NOT_BLANK4:  LDAA TENS ;(similar to ’ten_thousands’ case)
+             ORAA #$30
+             STAA TENS
 
-  NOT_BLANK4:  LDAA TENS ;(similar to ’ten_thousands’ case)
-               ORAA #$30
-               STAA TENS
-
-  C_UNITS:     LDAA UNITS ;No blank check necessary, convert to ascii.
-               ORAA #$30
-               STAA UNITS
-
-            RTS ;We’re done
+C_UNITS:     LDAA UNITS ;No blank check necessary, convert to ascii.
+             ORAA #$30
+             STAA UNITS
+	     
+	     RTS ;We’re done
 
 ;*******************************************************************
 
@@ -747,9 +824,9 @@ TOF_ISR     INC TOF_COUNTER
             STAA TFLG2 ; TOF
             RTI
             
-;*******************************************************************;
-;        Update Display (Battery Voltage + Current State) 	    ;
-;*******************************************************************;
+;*******************************************************************
+;* Update Display (Battery Voltage + Current State) *
+;*******************************************************************
 
 UPDT_DISPL  MOVB #$90,ATDCTL5 ; R-just., uns., sing. conv., mult., ch=0, start
             BRCLR ATDSTAT0,$80,* ; Wait until the conver. seq. is complete
@@ -776,7 +853,7 @@ UPDT_DISPL  MOVB #$90,ATDCTL5 ; R-just., uns., sing. conv., mult., ch=0, start
             LDAA HUNDREDS
             JSR putcLCD ; Display the battery voltage
             
-            LDAA #$C6 ; Move LCD cursor to the 2nd row, end of msg2
+            LDAA #$C7 ; Move LCD cursor to the 2nd row, end of msg2
             JSR cmd2LCD ;
             LDAB CRNT_STATE ; Display current state
             LSLB ; "
@@ -795,9 +872,9 @@ ISR_B	   MOVB #$02, TFLG1 ; initialize input capture for interrupt
 	       INC ISR_CNT2  ; increment the second counter
 	       RTI ; return to normal program execution
 	   
-;*******************************************************************;
-; 			Interrupt Vectors 			    ;
-;*******************************************************************;
+;*******************************************************************
+;* Interrupt Vectors *
+;*******************************************************************
             ORG $FFFE
             DC.W Entry ; Reset Vector
             
