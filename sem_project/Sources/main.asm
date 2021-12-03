@@ -1,7 +1,7 @@
 ;*****************************************************************
-; Nicholas Vieira, Section 9, 500977730     			 *
-; Jasdeep Gahunia, Section 7, 500965510				 *
-: Jasmeet Gill, Section 11, 500967398				 *
+; Nicholas Vieira, Section 9, 500977730     			               *
+; Jasdeep Gahunia, Section 7, 500965510				                   *
+; Jasmeet Gill, Section 11, 500967398				                     *
 ;*****************************************************************
 
 ; export symbols
@@ -55,8 +55,8 @@ T_RIGHT   EQU  7
 ; variable section
             ORG $3800 ; Where our TOF counter register lives
 	    
-IRS_CNT1    DC.W 0 ; initialize first interrupt routine at address $0000
-IRS_CNT2    DC.W 0 ; initialize second interrupt routine at address $0000
+ISR_CNT1    DC.W 0 ; initialize first interrupt routine at address $0000
+ISR_CNT2    DC.W 0 ; initialize second interrupt routine at address $0000
 	    
 ; Storage Registers
 
@@ -103,17 +103,6 @@ UNITS       ds.b 1 ; 1 digit
 NO_BLANK    ds.b 1 ; Used in ’leading zero’ blanking by BCD2ASC
 BCD_SPARE   RMB 10   ; Extra space for decimal point and string terminator
 
-;ATD variables
-
-ATDDIEN:     RMB 8
-ATDDR0L      RMB 8
-ATDSTAT0:    RMB 1
-ATDDR4       RMB 4
-ATDCTL2      RMB 4
-ATDCTL3      RMB 4
-ATDCTL4      RMB 4
-ATDCTL5      RMB 4
-
 ;code section
             ORG $4000 
 Entry:
@@ -129,7 +118,7 @@ _Startup:
             BSET DDRA,%00000011  ; STAR_DIR, PORT_DIR                        
             BSET DDRT,%00110000  ; STAR_SPEED, PORT_SPEED                                                                                   
             JSR initAD   ; Initialize ATD converter
-	    JSR clrLCD   ; Clear LCD and home cursor
+	          JSR clrLCD   ; Clear LCD and home cursor
 	      
             LDX #msg1 ; Display msg1
             JSR putsLCD
@@ -176,7 +165,7 @@ DISPATCHER  CMPA #START ; If it’s the START state
             BRA DISP_EXIT ; and exit                        
 ;                                                           
 NOT_START   CMPA #FWD ;Else if it's the FORWARD state
-            BNE NO_FWD
+            BNE NOT_FORWARD
             JSR FWD_ST ; then call the FORWARD routine
             JMP DISP_EXIT ; and exit
             
@@ -187,7 +176,7 @@ NOT_FORWARD   CMPA #REV ;Else if it's the REVERSE state
             
 NOT_REV      CMPA #LT_TRN ;Else if it's the LT_TRN state
              BNE NOT_LT_TRN
-             JSR LT_TRN_ST ; then call the LT_TRN routine
+             JSR LEFT_TRN_ST ; then call the LT_TRN routine
              JMP DISP_EXIT ; and exit
             
 NOT_LT_TRN  CMPA #RT_TRN ;Else if it's the RT_TRN state
@@ -203,7 +192,6 @@ NOT_RT_TRN  CMPA #REV_TRN  ;Else if it's the REV_TRN state
 NOT_REV_TRN  CMPA #ALL_STP
 	           BNE NOT_ALL_STP
 	           JSR ALL_STP_ST
-	           JMP DISP_EXIT1
 	           JMP DISP_EXIT ; and exit
 	     
 NOT_ALL_STP  NOP       
@@ -211,7 +199,7 @@ DISP_EXIT   RTS ; Exit from the state dispatcher ----------
 
 ;*******************************************************************
 
-START_ST    BRCLR PORTAD0, $04, NO_FWD ;If FWD_BUMP
+START_ST    BRCLR PORTAD0, $04, START_EXIT ;If FWD_BUMP
             JSR INIT_FWD ; initialize the FWD state
             MOVB #FWD, CRNT_STATE  ; Go into the FWD state
             
@@ -230,37 +218,37 @@ NO_FWD_BUMP BRSET PORTAD0, $08, NO_REV_BUMP ; If REAR_BUMP, then we should stop
             JMP FWD_EXIT ; and return
             
 NO_REV_BUMP  LDAA SENSOR_BOW
-	     ADDA VAR_BOW
-	     CMPA BASE_BOW
-	     BPL NO_ALIGN
+      	     ADDA VAR_BOW
+      	     CMPA BASE_BOW
+      	     BPL NO_ALIGN
 	     
-	     LDAA SENSOR_MID
-	     ADDA VAR_MID
-	     CMPA BASE_MID
-	     BPL NO_ALIGN
-             
-	     LDAA SENSOR_LINE
-	     ADDA VAR_LINE
-	     CMPA BASE_LINE
-	     BMI GO_RIGHT_ALIGN
+      	     LDAA SENSOR_MID
+      	     ADDA VAR_MID
+      	     CMPA BASE_MID
+      	     BPL NO_ALIGN
+                   
+      	     LDAA SENSOR_LINE
+      	     ADDA VAR_LINE
+      	     CMPA BASE_LINE
+      	     BMI GO_RIGHT_ALIGN
 	     
 NO_ALIGN     LDAA SENSOR_PORT
-	     ADDA VAR_PORT
-	     CMPA BASE_PORT
-	     BPL PART_LEFT_TURN
-	     BMI NO_PART_DET
+      	     ADDA VAR_PORT
+      	     CMPA BASE_PORT
+      	     BPL PART_LEFT_TURN
+      	     BMI NO_PART_DET
 	     
 NO_PORT_DET  LDAA SENSOR_BOW
-	     ADDA VAR_BOW
-	     CMPA BASE_BOW
-	     BPL EXIT
-	     BMI NO_BOW_DET
+      	     ADDA VAR_BOW
+      	     CMPA BASE_BOW
+      	     BPL EXIT
+      	     BMI NO_BOW_DET
 	     
 NO_BOW_DET   LDAA SENSOR_STBD
-	     ADDA VAR_STBD
-	     CMPA BASE_STBD
-	     BPL EXIT
-	     BMI NO_BOW_DET
+      	     ADDA VAR_STBD
+      	     CMPA BASE_STBD
+      	     BPL EXIT
+      	     BMI NO_BOW_DET
 	     
 LT_TURN       LDAA  NEXT_D   ; Push direction for the previous
               PSHA      ; Intersection to the stack pointer
@@ -294,45 +282,45 @@ REV_EXIT    RTS ; return to the MAIN routine
 
 ;******************************************************************
 
-LEFT_TRN    LDAA SENSOR_BOW
-	    ADDA VAR_BOW
-	    CMPA BASE_BOW
-	    BPL LEFT_EXIT
-	    BMI EXIT
+LEFT_TRN_ST    LDAA SENSOR_BOW
+      	       ADDA VAR_BOW
+      	       CMPA BASE_BOW
+      	       BPL LEFT_EXIT
+      	       BMI EXIT
 	    
 LEFT_EXIT  MOVB #FWD_ST, CRNT_STATE
-	   JSR INIT_FWD
-	   BRA EXIT
+      	   JSR INIT_FWD
+      	   BRA EXIT
 	   
-RIGHT_TRN   LDAA SENSOR_BOW
-	    ADDA VAR_BOW
-	    CMPA BASE_BOW
-	    BPL RIGHT_EXIT
-	    BMI EXIT
+RIGHT_TRN_ST    LDAA SENSOR_BOW
+          	    ADDA VAR_BOW
+          	    CMPA BASE_BOW
+          	    BPL RIGHT_EXIT
+          	    BMI EXIT
 	    
 RIGHT_EXIT  MOVB #FWD_ST, CRNT_STATE
-	    JSR INIT_FWD
-	    BRA EXIT	   
+	          JSR INIT_FWD
+	          BRA EXIT	   
 	    
 ;******************************************************************
 
 REV_TRN_ST  LDAA SENSOR_BOW
-	    ADDA VAR_BOW
-	    CMPA BASE_BOW
-	    BPL LEFT_EXIT
-	    BMI EXIT
-	    
-	    JSR INIT_LEFT
-	    MOVB #FWD_ST, CRNT_STATE
-	    JSR INIT_FWD
-	    BRA EXIT
+      	    ADDA VAR_BOW
+      	    CMPA BASE_BOW
+      	    BPL LEFT_EXIT
+      	    BMI EXIT
+      	    
+      	    JSR INIT_LT_TRN
+      	    MOVB #FWD_ST, CRNT_STATE
+      	    JSR INIT_FWD
+      	    BRA EXIT
 
 ;******************************************************************
 
-ALL_STP_ST BRSET PORTAD0, %04, NOT_START
-	   MOVB #START_ST, CRNT_STATE
+ALL_STP_ST  BRSET PORTAD0, $04, NOT_START_ST
+	          MOVB #START_ST, CRNT_STATE
 	   
-NOT_START  RTS
+NOT_START_ST  RTS
 
 ;******************************************************************
 
@@ -385,8 +373,7 @@ INIT_REV_TRN  BCLR PORTA,%00000010 ; Set FWD dir. for STARBOARD (right) motor
 	      
 ;*******************************************************************
 
-INIT_SENSORS   BCLR DDRAD $FF ; Clear PortAD to an input
-	       BSET DDRA,$FF ; Set PORTA
+INIT_SENSORS   BSET DDRA,$FF ; Set PORTA
                BSET DDRB,$FF ; Set PORTB
                BSET DDRJ,$C0 ; Set PORTJ
                RTS
@@ -864,13 +851,13 @@ UPDT_DISPL  MOVB #$90,ATDCTL5 ; R-just., uns., sing. conv., mult., ch=0, start
             JSR putsLCD ; "
             RTS
 	    
-ISR_A	   MOVB #$01, TFLG1 ; initialize input capture for interrupt
-	       INC ISR_CNT1 ; increment the first counter
-	       RTI ; return to normal program execution
+ISR_A	      MOVB #$01, TFLG1 ; initialize input capture for interrupt
+	          INC ISR_CNT1 ; increment the first counter
+	          RTI ; return to normal program execution
 
-ISR_B	   MOVB #$02, TFLG1 ; initialize input capture for interrupt
-	       INC ISR_CNT2  ; increment the second counter
-	       RTI ; return to normal program execution
+ISR_B	      MOVB #$02, TFLG1 ; initialize input capture for interrupt
+	          INC ISR_CNT2  ; increment the second counter
+	          RTI ; return to normal program execution
 	   
 ;*******************************************************************
 ;* Interrupt Vectors *
@@ -878,11 +865,11 @@ ISR_B	   MOVB #$02, TFLG1 ; initialize input capture for interrupt
             ORG $FFFE
             DC.W Entry ; Reset Vector
             
-	    ORG $FFEE
-	    DC.W ISR_A ; allocation of the first interrupt routine
-	    
-	    ORG $FFEC
-	    DC.W ISR_B ; allocation of the second interrupt routine
+      	    ORG $FFEE
+      	    DC.W ISR_A ; allocation of the first interrupt routine
+      	    
+      	    ORG $FFEC
+      	    DC.W ISR_B ; allocation of the second interrupt routine
 	    
             ORG $FFDE
             DC.W TOF_ISR ; Timer Overflow Interrupt Vector
