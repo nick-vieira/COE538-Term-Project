@@ -176,8 +176,8 @@ MAIN        JSR G_LEDS_ON   ; Enable guider LEDs
       	    
       	    JSR UPDT_DISPL  ; initializae eebot display
       	    LDAA CRNT_STATE
-      	    JSR ISR_A
-      	    JSR ISR_B
+      	    JSR ISR_A     ; initialize interrupt vectors for the service routine
+      	    JSR ISR_B     ; " "
       	    JSR DISPATCHER    ; jump to the state dispatcher
       	    BRA MAIN     ; return
      
