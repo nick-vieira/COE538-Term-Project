@@ -2,6 +2,11 @@
 ; Nicholas Vieira, Section 9, 500977730     			               *
 ; Jasdeep Gahunia, Section 7, 500965510				                   *
 ; Jasmeet Gill, Section 11, 500967398				                     *
+;                                                                *
+; Sensor reading and detection code was programmed using the     *
+; guider.asm file attached in the project folder. The dispatcher *
+; and state driven programming was taken from Lab 5              *
+; for this course                                                *
 ;*****************************************************************
 
 ; export symbols
@@ -11,7 +16,9 @@
 ; Include derivative-specific definitions 
 		        INCLUDE 'derivative.inc'
 
-;LCD equates section
+;*******************************************************************
+;LCD EQUATES SECTION                                               *
+;*******************************************************************
 
 CLEAR_HOME    EQU $01  ;Clear display and home cursor
 INTERFACE     EQU $38  ;8-bit interface, two line display
@@ -32,7 +39,9 @@ NULL  EQU 00  ; The string ’null terminator’
 CR    EQU $0D ; ’Carriage Return’ character
 SPACE EQU ' ' ; The ’space’ character		       
 
-; equates section
+;*******************************************************************
+;EQUATES SECTION                                                   *
+;*******************************************************************
 
 FWD_INT     EQU 69 ; 3 second delay (at 23Hz)
 REV_INT     EQU 69 ; 3 second delay (at 23Hz)
@@ -53,11 +62,12 @@ RT_TRN_ALIGN  EQU 8
 
 ;integer rotation counters
 
-T_LEFT    EQU  7
-T_RIGHT   EQU  7
+T_LEFT    EQU  7  ; Counter-clockwise rotation counter
+T_RIGHT   EQU  7  ;  Clockwise rotation counter
 
-; variable section
-
+;*******************************************************************
+;INTERRUPT VARIABLE SECTION                                        *
+;*******************************************************************
             ORG $3800 ; Where our TOF counter register lives
 	    
 ISR_CNT1    DC.W 0 ; initialize first interrupt routine at address $0000
@@ -95,7 +105,7 @@ CLEAR_LINE FCC ' '  ;clear line of display
            
 TEMP       RMB 1 ; Temporary location
 
-;ATD variables
+;ATD variables for HCS12 MCU
 
 ATDDIEN:     RMB 8
 ATDSTAT0:    RMB 1
@@ -106,7 +116,9 @@ ATDCTL4      RMB 4
 ATDCTL5      RMB 4
 ATDDR0L      RMB 4
 
-; variable section
+;*******************************************************************
+;EEBOT VARIABLE SECTION                                            *
+;*******************************************************************
 
             ORG $3850
 TOF_COUNTER dc.b 0 ; The timer, incremented at 23Hz
@@ -122,9 +134,11 @@ TENS        ds.b 1 ; 10 digit
 UNITS       ds.b 1 ; 1 digit
 NO_BLANK    ds.b 1 ; Used in ’leading zero’ blanking by BCD2ASC
 BCD_SPARE   RMB 10   ; Extra space for decimal point and string terminator
-TURN_TIME   ds.b 1
+TURN_TIME   ds.b 1  ; Left and right turning time 
 
-;code section
+;*******************************************************************
+;CODE SECTION                                                      *
+;*******************************************************************
             ORG $4000 
 Entry:
 _Startup:
@@ -160,12 +174,16 @@ MAIN        JSR G_LEDS_ON   ; Enable guider LEDs
       	    JSR DISPLAY_SENSORS   ;protocol for eebot sensor display
       	    BRA MAIN
       	    
-      	    JSR UPDT_DISPL
+      	    JSR UPDT_DISPL  ; initializae eebot display
       	    LDAA CRNT_STATE
-      	    JSR DISPATCHER
-      	    BRA MAIN
+      	    JSR ISR_A
+      	    JSR ISR_B
+      	    JSR DISPATCHER    ; jump to the state dispatcher
+      	    BRA MAIN     ; return
      
-;data section
+;*******************************************************************
+;DATA SECTION                                                      *
+;*******************************************************************
 
 msg1        dc.b "Battery Voltage ",0
 msg2        dc.b "State ",0
@@ -178,7 +196,9 @@ tab         dc.b "START ",0
 	          dc.b "LT_TRN", 0
 	          dc.b "RT_TRN", 0
 
-;subroutine section
+;*******************************************************************
+;SUBROUTINE SECTION                                                *
+;*******************************************************************
 
 DISPATCHER  CMPA #START ; If it’s the START state 
             BNE NOT_START 
@@ -207,12 +227,12 @@ NOT_LT_TRN  CMPA #RT_TRN ;Else if it's the RT_TRN state
             
 NOT_RT_TRN  CMPA #REV_TRN  ;Else if it's the REV_TRN state
             BNE NOT_REV_TRN
-            JSR REV_TRN_ST ; then call the REVERSE TURN routine
+            JSR REV_TRN_ST ; then call the REV_TRN routine
             JMP DISP_EXIT ; and exit
 	    
-NOT_REV_TRN  CMPA #ALL_STP
+NOT_REV_TRN  CMPA #ALL_STP  ;Else if it's the ALL_STP state
 	           BNE NOT_ALL_STP
-	           JSR ALL_STP_ST
+	           JSR ALL_STP_ST ; then call the ALL_STP routine
 	           JMP DISP_EXIT ; and exit
 	     
 NOT_ALL_STP  NOP       
@@ -238,64 +258,62 @@ NO_FWD_BUMP BRSET PORTAD0, $08, NO_REV_BUMP ; If REAR_BUMP, then we should stop
             MOVB #ALL_STP_ST, CRNT_STATE ; and change state to ALL_STOP
             JMP MAIN_EXIT ; and return
             
-NO_REV_BUMP  LDAA SENSOR_BOW
+NO_REV_BUMP  LDAA SENSOR_BOW   ; capture detection of sensor tape at the BOW
       	     ADDA VAR_BOW
-      	     CMPA BASE_BOW
-      	     BPL NO_ALIGN
+      	     CMPA BASE_BOW    ; if the BOW section was bumped
+      	     BPL NO_ALIGN    ; jump to NO_ALIGN for re-alignment
 	     
-      	     LDAA SENSOR_MID
+      	     LDAA SENSOR_MID  ; capture detection of sensor tape at the MID
       	     ADDA VAR_MID
-      	     CMPA BASE_MID
-      	     BPL NO_ALIGN
+      	     CMPA BASE_MID    ; if the MID section was bumped
+      	     BPL NO_ALIGN   ; jump to NO_ALIGN for re-alignment
                    
-      	     LDAA SENSOR_LINE
+      	     LDAA SENSOR_LINE   ; capture detection of sensor tape at the LINE
       	     ADDA VAR_LINE
-      	     CMPA BASE_LINE
-      	     BMI ALIGN_RT_TRN
+      	     CMPA BASE_LINE    ; if the LINE section was bumped
+      	     BMI ALIGN_RT_TRN  ; re-align for a right turn
 	     
-NO_ALIGN     LDAA SENSOR_PORT
+NO_ALIGN     LDAA SENSOR_PORT   ; capture detection of sensor tape at the PORT motor
       	     ADDA VAR_PORT
-      	     CMPA BASE_PORT
-      	     BPL PARTIAL_LT_TRN
-      	     BMI NO_PORT_DET
+      	     CMPA BASE_PORT     ; if the PORT section was bumped
+      	     BPL PARTIAL_LT_TRN    ; establish a partial left turn
+      	     BMI NO_PORT_DET     ;Branch if no PORT collision is detected to avoid a collision;
 	     
-NO_PORT_DET  LDAA SENSOR_BOW
+NO_PORT_DET  LDAA SENSOR_BOW   ; capture detection of sensor tape at the BOW
       	     ADDA VAR_BOW
-      	     CMPA BASE_BOW
-      	     BPL MAIN_EXIT
-      	     BMI NO_BOW_DET
+      	     CMPA BASE_BOW    ; if the BOW section was bumped
+      	     BPL MAIN_EXIT    ; exit the MAIN forward state
+      	     BMI NO_BOW_DET   ;Branch if no BOW collision is detected to avoid a collision
 	     
-NO_BOW_DET   LDAA SENSOR_STBD
+NO_BOW_DET   LDAA SENSOR_STBD   ; capture detection of sensor tape at the STARBOARD motor
       	     ADDA VAR_STBD
-      	     CMPA BASE_STBD
-      	     BPL MAIN_EXIT
-      	     BMI NO_BOW_DET
+      	     CMPA BASE_STBD    ; if the STARBOARD section was bumped
+      	     BPL MAIN_EXIT     ; exit the MAIN forward state
+      	     BMI NO_BOW_DET    ;Branch if no BOW collision is detected to avoid a collision
       	     
-PARTIAL_LT_TRN    LDY #6000
-                  JSR del_50us
-                  JSR INIT_LT_TRN
-                  MOVB #LT_TRN_ST, CRNT_STATE
-                  LDY #6000
-                  JSR del_50us
+PARTIAL_LT_TRN    LDY #6000  ; delay counter to get pushed to stack pointer
+                  JSR del_50us  ; delay to jump to next state safely
+                  JSR INIT_LT_TRN   ;initialize a full LEFT TURN
+                  MOVB #LT_TRN_ST, CRNT_STATE   ; move to the LEFT TURN state
+                  LDY #6000  ; delay counter to get pushed to stack pointer
+                  JSR del_50us  ; delay to jump to next state safely ;
                   BRA MAIN_EXIT
                   
-PARTIAL_RT_TRN    LDY #6000
-                  JSR del_50us
-                  JSR INIT_RT_TRN
-                  MOVB #RT_TRN_ST, CRNT_STATE
-                  LDY #6000
-                  JSR del_50us
+PARTIAL_RT_TRN    LDY #6000  ; delay counter to get pushed to stack pointer
+                  JSR del_50us  ; delay to jump to next state safely
+                  JSR INIT_RT_TRN   ;initialize a full RIGHT TURN
+                  MOVB #RT_TRN_ST, CRNT_STATE   ; move to the RIGHT TURN state
+                  LDY #6000  ; delay counter to get pushed to stack pointer
+                  JSR del_50us  ; delay to jump to next state safely ;
                   BRA MAIN_EXIT
                   
-ALIGN_LT_TRN    JSR INIT_LT_TRN
+ALIGN_LT_TRN    JSR INIT_LT_TRN    ;initialize LEFT TURN state once the alignment is complete
                 MOVB #LT_TRN_ALIGN, CRNT_STATE
                 BRA MAIN_EXIT
                 
-ALIGN_RT_TRN    JSR INIT_RT_TRN
+ALIGN_RT_TRN    JSR INIT_RT_TRN  ;initialize RIGHT TURN state once the alignment is complete
                 MOVB #RT_TRN_ALIGN, CRNT_STATE
                 BRA MAIN_EXIT                                                    
-	     
-;build LT_TRN and RT_TRN here
 	      
 MAIN_EXIT    RTS ; return to the MAIN routine
 
@@ -313,21 +331,21 @@ REV_EXIT    RTS ; return to the MAIN routine
 
 ;******************************************************************
 
-LT_TRN_ST    LDAA SENSOR_BOW
+LT_TRN_ST    LDAA SENSOR_BOW   ; capture detection of sensor tape at the BOW
       	     ADDA VAR_BOW
-      	     CMPA BASE_BOW
-      	     BPL LT_EXIT
+      	     CMPA BASE_BOW    ; if the BOW section was bumped
+      	     BPL LT_EXIT    ; exit the LEFT TURN state and then the MAIN state
       	     BMI MAIN_EXIT
 	    
 LT_EXIT      MOVB #FWD_ST, CRNT_STATE
           	 JSR INIT_FWD
           	 BRA MAIN_EXIT
 	   
-RT_TRN_ST    LDAA SENSOR_BOW
-          	 ADDA VAR_BOW
-          	 CMPA BASE_BOW
-          	 BPL RT_EXIT
-          	 BMI MAIN_EXIT
+RT_TRN_ST    LDAA SENSOR_BOW   ; capture detection of sensor tape at the BOW
+      	     ADDA VAR_BOW
+      	     CMPA BASE_BOW    ; if the BOW section was bumped
+      	     BPL RT_EXIT    ; exit the RIGHT TURN state and then the MAIN state
+      	     BMI MAIN_EXIT
 	    
 RT_EXIT      MOVB #FWD_ST, CRNT_STATE
     	       JSR INIT_FWD
@@ -335,27 +353,25 @@ RT_EXIT      MOVB #FWD_ST, CRNT_STATE
 	    
 ;******************************************************************
 
-REV_TRN_ST  LDAA SENSOR_BOW
-      	    ADDA VAR_BOW
-      	    CMPA BASE_BOW
-      	    BMI MAIN_EXIT
+REV_TRN_ST   LDAA SENSOR_BOW   ; capture detection of sensor tape at the BOW
+      	     ADDA VAR_BOW
+      	     CMPA BASE_BOW    ; if the BOW section was bumped
+      	     BPL MAIN_EXIT    ; exit the MAIN forward state
       	    
-      	    JSR INIT_LT_TRN
+      	    JSR INIT_LT_TRN   ;initialize a LEFT TURN for alignment after the complete rotation
       	    MOVB #FWD_ST, CRNT_STATE
-      	    JSR INIT_FWD
+      	    JSR INIT_FWD   ; drive the forward motors
       	    BRA MAIN_EXIT
 
 ;******************************************************************
 
-ALL_STP_ST  BRSET PORTAD0, $04, NOT_START_ST
-	          MOVB #START_ST, CRNT_STATE
+ALL_STP_ST  BRSET PORTAD0, $04, NOT_START_ST  ; if the front bumper is active
+	          MOVB #START_ST, CRNT_STATE   ; then initialize the START state
 	   
 NOT_START_ST  RTS
 
 ;******************************************************************
-
-
-;Initialization subroutines
+;INITIALIZATION SUBROUTINES
 ;******************************************************************
 
 INIT_FWD    BCLR PORTA,%00000011 ; Set FWD direction for both motors
@@ -376,20 +392,20 @@ INIT_REV      BSET PORTA,%00000011 ; Set REV direction for both motors
               
 ;*******************************************************************
 
-INIT_RT_TRN   BSET PORTA,%00000010   ; Set REV dir. for right motor
-              BCLR PORTA,%00000001   ; Set FWD dir. for left motor
+INIT_RT_TRN   BSET PORTA,%00000010   ; Set port motor to forward
+              BCLR PORTA,%00000001   ; Set starboard motor to reverse
               LDAA TOF_COUNTER    ; Mark the fwd_turn time Tfwdturn
-              ADDA #T_RIGHT
-              STAA TURN_TIME
+              ADDA #T_RIGHT   ;add the time taken to turn right
+              STAA TURN_TIME  ; generate a reference for the length of time to turn
               RTS
 
 ;*******************************************************************
                   
-INIT_LT_TRN   BSET  PORTA,%00000001   ; Set left motor to reverse
-              BCLR  PORTA,%00000010   ; Set right motor to fwd
-              LDAA  TOF_COUNTER   ; Mark the current TOF time
-              ADDA  #T_LEFT      ; Add left turn time to that
-              STAA  TURN_TIME     ; store in T_TURN to read later on
+INIT_LT_TRN   BSET  PORTA,%00000001   ; Set port motor to reverse
+              BCLR  PORTA,%00000010   ; Set starboard motor to forward
+              LDAA  TOF_COUNTER   ; Mark the current overflow time
+              ADDA  #T_LEFT      ; Add the time taken to turn left
+              STAA  TURN_TIME     ; generate a reference for the length of time to turn
               RTS
 
 ;********************************************************************
@@ -399,7 +415,7 @@ INIT_ALL_STP   BCLR PTT,%00110000  ; Turn off the drive motors
                                                      
 ;*******************************************************************
 
-INIT_REV_TRN  BCLR PORTA,%00000010 ; Set FWD dir. for STARBOARD (right) motor
+INIT_REV_TRN  BCLR PORTA,%00000010 ; Set starboard motor to forward
               LDAA TOF_COUNTER ; Mark the fwd time Tfwd
               ADDA #REV_TRN_INT
               STAA T_REV_TRN
@@ -410,63 +426,11 @@ INIT_REV_TRN  BCLR PORTA,%00000010 ; Set FWD dir. for STARBOARD (right) motor
 INIT_SENSORS   BSET DDRA,$FF ; Set PORTA
                BSET DDRB,$FF ; Set PORTB
                BSET DDRJ,$C0 ; Set PORTJ
-               RTS
-	       
-;*******************************************************************	       
+               RTS	       
 
-;Motor control
-
-            BSET DDRA,%00000011
-            BSET DDRT,%00110000
-            JSR  STARFWD
-            JSR  PORTFWD
-            JSR  STARON
-            JSR  PORTON
-            JSR  STARREV
-            JSR  PORTREV
-            JSR  STAROFF
-            JSR  PORTOFF
-            BRA  *
-            
-STARON      LDAA PTT
-            ORAA #%00100000
-            STAA PTT
-            RTS
-            
-STAROFF     LDAA PTT
-            ANDA #%11011111
-            STAA PTT
-            RTS
-            
-PORTON:     LDAA PTT
-            ORAA #%00010000
-            STAA PTT
-            RTS
-            
-PORTOFF:    LDAA PTT
-            ANDA #%11101111
-            STAA PTT
-            RTS
-            
-STARFWD:    LDAA PORTA
-            ANDA #%11111101
-            STAA PORTA
-            RTS
-            
-STARREV:    LDAA PORTA
-            ORAA #%00000010
-            STAA PORTA
-            RTS
-
-PORTFWD     LDAA PORTA
-            ANDA #%11111110
-            STAA PORTA
-            RTS
-            
-PORTREV     LDAA PORTA
-            ORAA #%00000001
-            STAA PTH
-            RTS
+;*******************************************************************
+; GUIDER RELATED CODE                                              *
+;*******************************************************************
 
 ; Initialize the ADC
 
@@ -589,8 +553,9 @@ DISPLAY_SENSORS LDAA SENSOR_BOW      ; Get the FRONT sensor value
                 LDX #BOT_LINE        ; Copy the buffer bottom line to the LCD
                 JSR putsLCD
                 RTS
-
-; utility subroutines
+                
+;*****************************************************************
+; UTILITY SUBROUTINES                                            *
 ;*****************************************************************
 
 ;Binary to ASCII
