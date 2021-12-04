@@ -39,6 +39,8 @@ REV_INT     EQU 69 ; 3 second delay (at 23Hz)
 FWD_TRN_INT EQU 46 ; 2 second delay (at 23Hz)
 REV_TRN_INT EQU 46 ; 2 second delay (at 23Hz)
 
+;eebot states
+
 START       EQU 0
 FWD         EQU 1
 REV         EQU 2
@@ -46,13 +48,16 @@ LT_TRN      EQU 3
 RT_TRN	    EQU	4
 REV_TRN     EQU 5
 ALL_STP     EQU 6
+LT_TRN_ALIGN  EQU 7
+RT_TRN_ALIGN  EQU 8
 
-; Turning Timers
-;---------------
+;integer rotation counters
+
 T_LEFT    EQU  7
 T_RIGHT   EQU  7
 
 ; variable section
+
             ORG $3800 ; Where our TOF counter register lives
 	    
 ISR_CNT1    DC.W 0 ; initialize first interrupt routine at address $0000
@@ -81,14 +86,29 @@ VAR_STBD      FCB   $15
             
 TOP_LINE   RMB 20 ; Top line of display
            FCB NULL ; terminated by null
+           
 BOT_LINE   RMB 20 ; Bottom line of display
            FCB NULL ; terminated by null
-CLEAR_LINE FCC ' '
+           
+CLEAR_LINE FCC ' '  ;clear line of display
            FCB NULL ; terminated by null
+           
 TEMP       RMB 1 ; Temporary location
+
+;ATD variables
+
+ATDDIEN:     RMB 8
+ATDSTAT0:    RMB 1
+ATDDR4       RMB 4
+ATDCTL2      RMB 4
+ATDCTL3      RMB 4
+ATDCTL4      RMB 4
+ATDCTL5      RMB 4
+ATDDR0L      RMB 4
 
 ; variable section
 
+            ORG $3850
 TOF_COUNTER dc.b 0 ; The timer, incremented at 23Hz
 CRNT_STATE  dc.b 3 ; Current state register
 T_FWD       ds.b 1 ; FWD time
@@ -102,6 +122,7 @@ TENS        ds.b 1 ; 10 digit
 UNITS       ds.b 1 ; 1 digit
 NO_BLANK    ds.b 1 ; Used in ’leading zero’ blanking by BCD2ASC
 BCD_SPARE   RMB 10   ; Extra space for decimal point and string terminator
+TURN_TIME   ds.b 1
 
 ;code section
             ORG $4000 
@@ -109,7 +130,7 @@ Entry:
 _Startup:
 
             LDS $4000 ; Stack pointer initialization
-            CLI	; Enable interrupts
+            CLI	  ; Enable interrupts
             JSR INIT_SENSORS ; initialize sensors through the ports 
             JSR openADC ; ATD initialization
             JSR initLCD ; LCD initlization
@@ -136,13 +157,13 @@ MAIN        JSR G_LEDS_ON   ; Enable guider LEDs
             LDY #2000   ; set 300 ms delay for eebot initialization
             JSR del_50us   ; jump to delay routine
 	    
-	    JSR DISPLAY_SENSORS
-	    BRA MAIN
-	    
-	    JSR UPDT_DISPL
-	    LDAA CRNT_STATE
-	    JSR DISPATCHER
-	    BRA MAIN
+      	    JSR DISPLAY_SENSORS   ;protocol for eebot sensor display
+      	    BRA MAIN
+      	    
+      	    JSR UPDT_DISPL
+      	    LDAA CRNT_STATE
+      	    JSR DISPATCHER
+      	    BRA MAIN
      
 ;data section
 
@@ -154,8 +175,8 @@ tab         dc.b "START ",0
             dc.b "ALL_STP",0
             dc.b "FWD_TRN",0
             dc.b "REV_TRN",0
-	    dc.b "LT_TRN", 0
-	    dc.b "RT_TRN", 0
+	          dc.b "LT_TRN", 0
+	          dc.b "RT_TRN", 0
 
 ;subroutine section
 
@@ -176,7 +197,7 @@ NOT_FORWARD   CMPA #REV ;Else if it's the REVERSE state
             
 NOT_REV      CMPA #LT_TRN ;Else if it's the LT_TRN state
              BNE NOT_LT_TRN
-             JSR LEFT_TRN_ST ; then call the LT_TRN routine
+             JSR LT_TRN_ST ; then call the LT_TRN routine
              JMP DISP_EXIT ; and exit
             
 NOT_LT_TRN  CMPA #RT_TRN ;Else if it's the RT_TRN state
@@ -195,7 +216,7 @@ NOT_REV_TRN  CMPA #ALL_STP
 	           JMP DISP_EXIT ; and exit
 	     
 NOT_ALL_STP  NOP       
-DISP_EXIT   RTS ; Exit from the state dispatcher ----------
+DISP_EXIT   RTS ; Exit from the state dispatcher
 
 ;*******************************************************************
 
@@ -210,12 +231,12 @@ START_EXIT  RTS ; return to the MAIN routine
 FWD_ST      BRSET PORTAD0, $04, NO_FWD_BUMP ; if FWD_BUMP then
             JSR INIT_REV_TRN   ; initialize the REVERSE_TRN routine
             MOVB #REV_TRN, CRNT_STATE  ;set the state to REVERSE_TRN
-            JMP FWD_EXIT  ; return
+            JMP MAIN_EXIT  ; return
             
 NO_FWD_BUMP BRSET PORTAD0, $08, NO_REV_BUMP ; If REAR_BUMP, then we should stop
             JSR INIT_ALL_STP ; so initialize the ALL_STOP state
             MOVB #ALL_STP_ST, CRNT_STATE ; and change state to ALL_STOP
-            JMP FWD_EXIT ; and return
+            JMP MAIN_EXIT ; and return
             
 NO_REV_BUMP  LDAA SENSOR_BOW
       	     ADDA VAR_BOW
@@ -230,43 +251,53 @@ NO_REV_BUMP  LDAA SENSOR_BOW
       	     LDAA SENSOR_LINE
       	     ADDA VAR_LINE
       	     CMPA BASE_LINE
-      	     BMI GO_RIGHT_ALIGN
+      	     BMI ALIGN_RT_TRN
 	     
 NO_ALIGN     LDAA SENSOR_PORT
       	     ADDA VAR_PORT
       	     CMPA BASE_PORT
-      	     BPL PART_LEFT_TURN
-      	     BMI NO_PART_DET
+      	     BPL PARTIAL_LT_TRN
+      	     BMI NO_PORT_DET
 	     
 NO_PORT_DET  LDAA SENSOR_BOW
       	     ADDA VAR_BOW
       	     CMPA BASE_BOW
-      	     BPL EXIT
+      	     BPL MAIN_EXIT
       	     BMI NO_BOW_DET
 	     
 NO_BOW_DET   LDAA SENSOR_STBD
       	     ADDA VAR_STBD
       	     CMPA BASE_STBD
-      	     BPL EXIT
+      	     BPL MAIN_EXIT
       	     BMI NO_BOW_DET
+      	     
+PARTIAL_LT_TRN    LDY #6000
+                  JSR del_50us
+                  JSR INIT_LT_TRN
+                  MOVB #LT_TRN_ST, CRNT_STATE
+                  LDY #6000
+                  JSR del_50us
+                  BRA MAIN_EXIT
+                  
+PARTIAL_RT_TRN    LDY #6000
+                  JSR del_50us
+                  JSR INIT_RT_TRN
+                  MOVB #RT_TRN_ST, CRNT_STATE
+                  LDY #6000
+                  JSR del_50us
+                  BRA MAIN_EXIT
+                  
+ALIGN_LT_TRN    JSR INIT_LT_TRN
+                MOVB #LT_TRN_ALIGN, CRNT_STATE
+                BRA MAIN_EXIT
+                
+ALIGN_RT_TRN    JSR INIT_RT_TRN
+                MOVB #RT_TRN_ALIGN, CRNT_STATE
+                BRA MAIN_EXIT                                                    
 	     
-LT_TURN       LDAA  NEXT_D   ; Push direction for the previous
-              PSHA      ; Intersection to the stack pointer
-              LDAA  SEC_PTH_INT ; Then store direction taken to NEXT_D
-              STAA  NEXT_D 
-              JSR   INIT_LT_TRN  ; The robot should make a LEFT turn
-              MOVB  #LT_TRN,CRNT_STATE ; Initialize the LT_TRN state
-              JMP FWD_EXIT             
-
-RT_TURN       LDAA  NEXT_D   ; Push direction for the previous
-              PSHA   ; Intersection to the stack pointer
-              LDAA  SEC_PTH_INT ; Then store direction taken to NEXT_D
-              STAA  NEXT_D 
-              JSR   INIT_RT_TRN  ; The robot should make a RIGHT turn
-              MOVB  #RT_TRN,CRNT_STATE ; Initialize the RT_TRN state
-              JMP FWD_EXIT
+;build LT_TRN and RT_TRN here
 	      
-FWD_EXIT    RTS ; return to the MAIN routine
+MAIN_EXIT    RTS ; return to the MAIN routine
 
 ;******************************************************************
 
@@ -282,38 +313,37 @@ REV_EXIT    RTS ; return to the MAIN routine
 
 ;******************************************************************
 
-LEFT_TRN_ST    LDAA SENSOR_BOW
-      	       ADDA VAR_BOW
-      	       CMPA BASE_BOW
-      	       BPL LEFT_EXIT
-      	       BMI EXIT
+LT_TRN_ST    LDAA SENSOR_BOW
+      	     ADDA VAR_BOW
+      	     CMPA BASE_BOW
+      	     BPL LT_EXIT
+      	     BMI MAIN_EXIT
 	    
-LEFT_EXIT  MOVB #FWD_ST, CRNT_STATE
-      	   JSR INIT_FWD
-      	   BRA EXIT
+LT_EXIT      MOVB #FWD_ST, CRNT_STATE
+          	 JSR INIT_FWD
+          	 BRA MAIN_EXIT
 	   
-RIGHT_TRN_ST    LDAA SENSOR_BOW
-          	    ADDA VAR_BOW
-          	    CMPA BASE_BOW
-          	    BPL RIGHT_EXIT
-          	    BMI EXIT
+RT_TRN_ST    LDAA SENSOR_BOW
+          	 ADDA VAR_BOW
+          	 CMPA BASE_BOW
+          	 BPL RT_EXIT
+          	 BMI MAIN_EXIT
 	    
-RIGHT_EXIT  MOVB #FWD_ST, CRNT_STATE
-	          JSR INIT_FWD
-	          BRA EXIT	   
+RT_EXIT      MOVB #FWD_ST, CRNT_STATE
+    	       JSR INIT_FWD
+    	       BRA MAIN_EXIT	   
 	    
 ;******************************************************************
 
 REV_TRN_ST  LDAA SENSOR_BOW
       	    ADDA VAR_BOW
       	    CMPA BASE_BOW
-      	    BPL LEFT_EXIT
-      	    BMI EXIT
+      	    BMI MAIN_EXIT
       	    
       	    JSR INIT_LT_TRN
       	    MOVB #FWD_ST, CRNT_STATE
       	    JSR INIT_FWD
-      	    BRA EXIT
+      	    BRA MAIN_EXIT
 
 ;******************************************************************
 
@@ -322,6 +352,10 @@ ALL_STP_ST  BRSET PORTAD0, $04, NOT_START_ST
 	   
 NOT_START_ST  RTS
 
+;******************************************************************
+
+
+;Initialization subroutines
 ;******************************************************************
 
 INIT_FWD    BCLR PORTA,%00000011 ; Set FWD direction for both motors
@@ -346,7 +380,7 @@ INIT_RT_TRN   BSET PORTA,%00000010   ; Set REV dir. for right motor
               BCLR PORTA,%00000001   ; Set FWD dir. for left motor
               LDAA TOF_COUNTER    ; Mark the fwd_turn time Tfwdturn
               ADDA #T_RIGHT
-              STAA T_TURN
+              STAA TURN_TIME
               RTS
 
 ;*******************************************************************
@@ -355,7 +389,7 @@ INIT_LT_TRN   BSET  PORTA,%00000001   ; Set left motor to reverse
               BCLR  PORTA,%00000010   ; Set right motor to fwd
               LDAA  TOF_COUNTER   ; Mark the current TOF time
               ADDA  #T_LEFT      ; Add left turn time to that
-              STAA  T_TURN     ; store in T_TURN to read later on
+              STAA  TURN_TIME     ; store in T_TURN to read later on
               RTS
 
 ;********************************************************************
@@ -556,6 +590,9 @@ DISPLAY_SENSORS LDAA SENSOR_BOW      ; Get the FRONT sensor value
                 JSR putsLCD
                 RTS
 
+; utility subroutines
+;*****************************************************************
+
 ;Binary to ASCII
                 
 HEX_TABLE       FCC '0123456789ABCDEF' ; Table for converting values
@@ -580,10 +617,16 @@ BIN2ASC         PSHA ; Save a copy of the input number on the stack
                 LDAA 0,X ; Get the MSnibble character into ACCA
                 PULB ; Retrieve the LSnibble character into ACCB
                 RTS
-                
-; utility subroutines
-
+   
 ;*****************************************************************
+;Position the cursor
+
+LCD_POS_CRSR    ORAA #%10000000 ; Set the high bit of the control word
+                JSR cmd2LCD ; and set the cursor address
+                RTS
+		
+;*******************************************************************
+
 ; Initialize the LCD
 
 openLCD         LDY #2000 ; Wait 100 ms for LCD to be ready
@@ -664,13 +707,6 @@ dataMov         BSET LCD_CNTR,LCD_E ; pull the LCD E-sigal high
                 JSR del_50us ; operation for most instructions
                 RTS 
 
-;*******************************************************************
-;Position the cursor
-
-LCD_POS_CRSR    ORAA #%10000000 ; Set the high bit of the control word
-                JSR cmd2LCD ; and set the cursor address
-                RTS
-		
 ;*******************************************************************
 
 initAD      MOVB #$C0,ATDCTL2 ;power up AD, select fast flag clear
@@ -753,47 +789,47 @@ C_THOU      LDAA THOUSANDS ;Check the thousands digit for blankness
              ORAA NO_BLANK  ;If it’s blank and ’no-blank’ is still zero
              BNE  NOT_BLANK2
 
-ISBLANK2:    LDAA  #' '  ; Thousands digit is blank
+ISBLANK2     LDAA  #' '  ; Thousands digit is blank
              STAA THOUSANDS ;so store a space
              BRA  C_HUNS ;and check the hundreds digit
 
-NOT_BLANK2:  LDAA THOUSANDS ;(similar to ’ten_thousands’ case)
+NOT_BLANK2   LDAA THOUSANDS ;(similar to ’ten_thousands’ case)
              ORAA #$30
              STAA THOUSANDS
              LDAA #$1
              STAA NO_BLANK
 
-C_HUNS:      LDAA HUNDREDS ;Check the hundreds digit for blankness
+C_HUNS       LDAA HUNDREDS ;Check the hundreds digit for blankness
              ORAA NO_BLANK ;If it’s blank and ’no-blank’ is still zero
              BNE NOT_BLANK3
 
-ISBLANK3:    LDAA  #' '  ; Hundreds digit is blank
+ISBLANK3     LDAA  #' '  ; Hundreds digit is blank
              STAA HUNDREDS ;so store a space
              BRA C_TENS ;and check the tens digit
 
-NOT_BLANK3:  LDAA HUNDREDS ;(similar to ’ten_thousands’ case)
+NOT_BLANK3   LDAA HUNDREDS ;(similar to ’ten_thousands’ case)
              ORAA #$30
              STAA HUNDREDS
              LDAA #$1
              STAA NO_BLANK
 
-C_TENS:      LDAA TENS ;Check the tens digit for blankness
+C_TENS       LDAA TENS ;Check the tens digit for blankness
              ORAA NO_BLANK ;If it’s blank and ’no-blank’ is still zero
              BNE NOT_BLANK4  ;
 
-ISBLANK4:    LDAA  #' '  ; Tens digit is blank
+ISBLANK4     LDAA  #' '  ; Tens digit is blank
              STAA TENS ;so store a space
              BRA C_UNITS ;and check the units digit
 	       
-NOT_BLANK4:  LDAA TENS ;(similar to ’ten_thousands’ case)
+NOT_BLANK4   LDAA TENS ;(similar to ’ten_thousands’ case)
              ORAA #$30
              STAA TENS
 
-C_UNITS:     LDAA UNITS ;No blank check necessary, convert to ascii.
+C_UNITS      LDAA UNITS ;No blank check necessary, convert to ascii.
              ORAA #$30
              STAA UNITS
 	     
-	     RTS ;We’re done
+	           RTS ;We’re done
 
 ;*******************************************************************
 
