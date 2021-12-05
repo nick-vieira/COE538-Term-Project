@@ -235,83 +235,83 @@ NOT_REV_TRN  CMPA #ALL_STP  ;Else if it's the ALL_STP state
 	           JSR ALL_STP_ST ; then call the ALL_STP routine
 	           JMP DISP_EXIT ; and exit
 	     
-NOT_ALL_STP  NOP       
+NOT_ALL_STP  NOP  ; Break to the monitor     
 DISP_EXIT   RTS ; Exit from the state dispatcher
 
 ;*******************************************************************
 
 START_ST    BRCLR PORTAD0, $04, START_EXIT ;If FWD_BUMP
-            JSR INIT_FWD ; initialize the FWD state
+            JSR INIT_FWD  ; initialize the FWD state
             MOVB #FWD, CRNT_STATE  ; Go into the FWD state
             
 START_EXIT  RTS ; return to the MAIN routine
 
 ;*******************************************************************
 
-FWD_ST      BRSET PORTAD0, $04, NO_FWD_BUMP ; if FWD_BUMP then
+FWD_ST      BRSET PORTAD0, $04, NO_FWD_BUMP ; If FWD_BUMP then
             JSR INIT_REV_TRN   ; initialize the REVERSE_TRN routine
             MOVB #REV_TRN, CRNT_STATE  ;set the state to REVERSE_TRN
-            JMP MAIN_EXIT  ; return
+            JMP MAIN_EXIT  ; and return
             
 NO_FWD_BUMP BRSET PORTAD0, $08, NO_REV_BUMP ; If REAR_BUMP, then we should stop
             JSR INIT_ALL_STP ; so initialize the ALL_STOP state
             MOVB #ALL_STP_ST, CRNT_STATE ; and change state to ALL_STOP
             JMP MAIN_EXIT ; and return
             
-NO_REV_BUMP  LDAA SENSOR_BOW   ; capture detection of sensor tape at the BOW
+NO_REV_BUMP  LDAA SENSOR_BOW   ; Capture detection of sensor tape at the BOW
       	     ADDA VAR_BOW
-      	     CMPA BASE_BOW    ; if the BOW section was bumped
-      	     BPL NO_ALIGN    ; jump to NO_ALIGN for re-alignment
+      	     CMPA BASE_BOW    ; If the BOW section was bumped
+      	     BPL NO_ALIGN    ; Jump to NO_ALIGN for re-alignment
 	     
-      	     LDAA SENSOR_MID  ; capture detection of sensor tape at the MID
+      	     LDAA SENSOR_MID  ; Capture detection of sensor tape at the MID
       	     ADDA VAR_MID
-      	     CMPA BASE_MID    ; if the MID section was bumped
-      	     BPL NO_ALIGN   ; jump to NO_ALIGN for re-alignment
+      	     CMPA BASE_MID    ; If the MID section was bumped
+      	     BPL NO_ALIGN   ; Jump to NO_ALIGN for re-alignment
                    
-      	     LDAA SENSOR_LINE   ; capture detection of sensor tape at the LINE
+      	     LDAA SENSOR_LINE   ; Capture detection of sensor tape at the LINE
       	     ADDA VAR_LINE
-      	     CMPA BASE_LINE    ; if the LINE section was bumped
-      	     BMI ALIGN_RT_TRN  ; re-align for a right turn
+      	     CMPA BASE_LINE    ; If the LINE section was bumped
+      	     BMI ALIGN_RT_TRN  ; Re-align for a right turn
 	     
-NO_ALIGN     LDAA SENSOR_PORT   ; capture detection of sensor tape at the PORT motor
+NO_ALIGN     LDAA SENSOR_PORT   ; Capture detection of sensor tape at the PORT motor
       	     ADDA VAR_PORT
-      	     CMPA BASE_PORT     ; if the PORT section was bumped
+      	     CMPA BASE_PORT     ; If the PORT section was bumped
       	     BPL PARTIAL_LT_TRN    ; establish a partial left turn
       	     BMI NO_PORT_DET     ;Branch if no PORT collision is detected to avoid a collision;
 	     
-NO_PORT_DET  LDAA SENSOR_BOW   ; capture detection of sensor tape at the BOW
+NO_PORT_DET  LDAA SENSOR_BOW   ; Capture detection of sensor tape at the BOW
       	     ADDA VAR_BOW
-      	     CMPA BASE_BOW    ; if the BOW section was bumped
+      	     CMPA BASE_BOW    ; If the BOW section was bumped
       	     BPL MAIN_EXIT    ; exit the MAIN forward state
       	     BMI NO_BOW_DET   ;Branch if no BOW collision is detected to avoid a collision
 	     
-NO_BOW_DET   LDAA SENSOR_STBD   ; capture detection of sensor tape at the STARBOARD motor
+NO_BOW_DET   LDAA SENSOR_STBD   ; Capture detection of sensor tape at the STARBOARD motor
       	     ADDA VAR_STBD
-      	     CMPA BASE_STBD    ; if the STARBOARD section was bumped
+      	     CMPA BASE_STBD    ; If the STARBOARD section was bumped
       	     BPL MAIN_EXIT     ; exit the MAIN forward state
       	     BMI NO_BOW_DET    ;Branch if no BOW collision is detected to avoid a collision
       	     
-PARTIAL_LT_TRN    LDY #6000  ; delay counter to get pushed to stack pointer
-                  JSR del_50us  ; delay to jump to next state safely
-                  JSR INIT_LT_TRN   ;initialize a full LEFT TURN
-                  MOVB #LT_TRN_ST, CRNT_STATE   ; move to the LEFT TURN state
-                  LDY #6000  ; delay counter to get pushed to stack pointer
-                  JSR del_50us  ; delay to jump to next state safely ;
+PARTIAL_LT_TRN    LDY #6000  ; Delay counter to get pushed to stack pointer
+                  JSR del_50us  ; Delay to jump to next state safely
+                  JSR INIT_LT_TRN  ; Initialize a full LEFT TURN
+                  MOVB #LT_TRN_ST, CRNT_STATE   ; Move to the LEFT TURN state
+                  LDY #6000  ; Delay counter to get pushed to stack pointer
+                  JSR del_50us  ; Delay to jump to next state safely ;
                   BRA MAIN_EXIT
                   
-PARTIAL_RT_TRN    LDY #6000  ; delay counter to get pushed to stack pointer
-                  JSR del_50us  ; delay to jump to next state safely
-                  JSR INIT_RT_TRN   ;initialize a full RIGHT TURN
-                  MOVB #RT_TRN_ST, CRNT_STATE   ; move to the RIGHT TURN state
-                  LDY #6000  ; delay counter to get pushed to stack pointer
-                  JSR del_50us  ; delay to jump to next state safely ;
+PARTIAL_RT_TRN    LDY #6000  ; Delay counter to get pushed to stack pointer
+                  JSR del_50us  ; Delay to jump to next state safely
+                  JSR INIT_RT_TRN   ;Initialize a full RIGHT TURN
+                  MOVB #RT_TRN_ST, CRNT_STATE   ; Move to the RIGHT TURN state
+                  LDY #6000  ; Delay counter to get pushed to stack pointer
+                  JSR del_50us  ; Delay to jump to next state safely ;
                   BRA MAIN_EXIT
                   
-ALIGN_LT_TRN    JSR INIT_LT_TRN    ;initialize LEFT TURN state once the alignment is complete
+ALIGN_LT_TRN    JSR INIT_LT_TRN    ;Initialize LEFT TURN state once the alignment is complete
                 MOVB #LT_TRN_ALIGN, CRNT_STATE
                 BRA MAIN_EXIT
                 
-ALIGN_RT_TRN    JSR INIT_RT_TRN  ;initialize RIGHT TURN state once the alignment is complete
+ALIGN_RT_TRN    JSR INIT_RT_TRN  ;Initialize RIGHT TURN state once the alignment is complete
                 MOVB #RT_TRN_ALIGN, CRNT_STATE
                 BRA MAIN_EXIT                                                    
 	      
@@ -333,7 +333,7 @@ REV_EXIT    RTS ; return to the MAIN routine
 
 LT_TRN_ST    LDAA SENSOR_BOW   ; capture detection of sensor tape at the BOW
       	     ADDA VAR_BOW
-      	     CMPA BASE_BOW    ; if the BOW section was bumped
+      	     CMPA BASE_BOW    ; If the BOW section was bumped
       	     BPL LT_EXIT    ; exit the LEFT TURN state and then the MAIN state
       	     BMI MAIN_EXIT
 	    
@@ -343,7 +343,7 @@ LT_EXIT      MOVB #FWD_ST, CRNT_STATE
 	   
 RT_TRN_ST    LDAA SENSOR_BOW   ; capture detection of sensor tape at the BOW
       	     ADDA VAR_BOW
-      	     CMPA BASE_BOW    ; if the BOW section was bumped
+      	     CMPA BASE_BOW    ; If the BOW section was bumped
       	     BPL RT_EXIT    ; exit the RIGHT TURN state and then the MAIN state
       	     BMI MAIN_EXIT
 	    
@@ -374,7 +374,7 @@ NOT_START_ST  RTS
 ;INITIALIZATION SUBROUTINES
 ;******************************************************************
 
-INIT_FWD    BCLR PORTA,%00000011 ; Set FWD direction for both motors
+INIT_FWD    BCLR PORTA,%00000011 ; Set both motors to forward
             BSET PTT,%00110000 ; Turn on the drive motors
             LDAA TOF_COUNTER ; Mark the fwd time Tfwd
             ADDA #FWD_INT
@@ -383,7 +383,7 @@ INIT_FWD    BCLR PORTA,%00000011 ; Set FWD direction for both motors
 	    
 ;*******************************************************************
 
-INIT_REV      BSET PORTA,%00000011 ; Set REV direction for both motors
+INIT_REV      BSET PORTA,%00000011 ; Set both motors to reverse
               BSET PTT,%00110000 ; Turn on the drive motors
               LDAA TOF_COUNTER ; Mark the fwd time Tfwd
               ADDA #REV_INT
@@ -396,7 +396,7 @@ INIT_RT_TRN   BSET PORTA,%00000010   ; Set port motor to forward
               BCLR PORTA,%00000001   ; Set starboard motor to reverse
               LDAA TOF_COUNTER    ; Mark the fwd_turn time Tfwdturn
               ADDA #T_RIGHT   ;add the time taken to turn right
-              STAA TURN_TIME  ; generate a reference for the length of time to turn
+              STAA TURN_TIME  ; Generate a reference for the length of time to turn
               RTS
 
 ;*******************************************************************
@@ -405,7 +405,7 @@ INIT_LT_TRN   BSET  PORTA,%00000001   ; Set port motor to reverse
               BCLR  PORTA,%00000010   ; Set starboard motor to forward
               LDAA  TOF_COUNTER   ; Mark the current overflow time
               ADDA  #T_LEFT      ; Add the time taken to turn left
-              STAA  TURN_TIME     ; generate a reference for the length of time to turn
+              STAA  TURN_TIME     ; Generate a reference for the length of time to turn
               RTS
 
 ;********************************************************************
@@ -852,13 +852,13 @@ UPDT_DISPL  MOVB #$90,ATDCTL5 ; R-just., uns., sing. conv., mult., ch=0, start
             JSR putsLCD ; "
             RTS
 	    
-ISR_A	      MOVB #$01, TFLG1 ; initialize input capture for interrupt
-	          INC ISR_CNT1 ; increment the first counter
-	          RTI ; return to normal program execution
+ISR_A	      MOVB #$01, TFLG1 ; Initialize input capture for interrupt
+	          INC ISR_CNT1 ; Increment the first counter
+	          RTI ; Return to normal program execution
 
-ISR_B	      MOVB #$02, TFLG1 ; initialize input capture for interrupt
-	          INC ISR_CNT2  ; increment the second counter
-	          RTI ; return to normal program execution
+ISR_B	      MOVB #$02, TFLG1 ; Initialize input capture for interrupt
+	          INC ISR_CNT2  ; Increment the second counter
+	          RTI ; Return to normal program execution
 	   
 ;*******************************************************************
 ;* Interrupt Vectors *
