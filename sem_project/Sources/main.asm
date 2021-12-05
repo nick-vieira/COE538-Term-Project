@@ -45,7 +45,6 @@ SPACE EQU ' ' ; The ’space’ character
 
 FWD_INT     EQU 69 ; 3 second delay (at 23Hz)
 REV_INT     EQU 69 ; 3 second delay (at 23Hz)
-FWD_TRN_INT EQU 46 ; 2 second delay (at 23Hz)
 REV_TRN_INT EQU 46 ; 2 second delay (at 23Hz)
 
 ;eebot states
@@ -125,7 +124,6 @@ TOF_COUNTER dc.b 0 ; The timer, incremented at 23Hz
 CRNT_STATE  dc.b 3 ; Current state register
 T_FWD       ds.b 1 ; FWD time
 T_REV       ds.b 1 ; REV time
-T_FWD_TRN   ds.b 1 ; FWD_TURN time
 T_REV_TRN   ds.b 1 ; REV_TURN time
 TEN_THOUS   ds.b 1 ; 10,000 digit
 THOUSANDS   ds.b 1 ; 1,000 digit
@@ -191,7 +189,6 @@ tab         dc.b "START ",0
             dc.b "FWD ",0
             dc.b "REV ",0
             dc.b "ALL_STP",0
-            dc.b "FWD_TRN",0
             dc.b "REV_TRN",0
 	          dc.b "LT_TRN", 0
 	          dc.b "RT_TRN", 0
