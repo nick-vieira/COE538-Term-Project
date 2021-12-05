@@ -144,7 +144,6 @@ Entry:
 _Startup:
 
             LDS $4000 ; Stack pointer initialization
-            CLI	  ; Enable interrupts
             JSR INIT_SENSORS ; initialize sensors through the ports 
             JSR openADC ; ATD initialization
             JSR initLCD ; LCD initlization
@@ -154,6 +153,7 @@ _Startup:
             BSET DDRT,%00110000  ; STAR_SPEED, PORT_SPEED                                                                                   
             JSR initAD   ; Initialize ATD converter
 	          JSR clrLCD   ; Clear LCD and home cursor
+	          CLI	  ; Enable interrupts
 	      
             LDX #msg1 ; Display msg1
             JSR putsLCD
